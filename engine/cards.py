@@ -1,0 +1,42 @@
+import numpy as np
+from typing import List, Tuple
+
+SUITS = ['h', 'd', 'c', 's']  # hearts, diamonds, clubs, spades
+RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A']
+
+class Card:
+    def __init__(self, rank: str, suit: str):
+        assert rank in RANKS, f"Invalid rank: {rank}"
+        assert suit in SUITS, f"Invalid suit: {suit}"
+        self.rank = rank
+        self.suit = suit
+
+    def __repr__(self):
+        return f"{self.rank}{self.suit}"
+
+    def __eq__(self, other):
+        return self.rank == other.rank and self.suit == other.suit
+
+    def __hash__(self):
+        return hash((self.rank, self.suit))
+
+class Deck:
+    def __init__(self, seed: int = None):
+        self.cards = [Card(rank, suit) for suit in SUITS for rank in RANKS]
+        # Use numpy RNG for faster shuffling (1.05-1.1× speedup)
+        self._rng = np.random.default_rng(seed)
+        self.shuffle()
+
+    def shuffle(self):
+        # Use numpy shuffle - faster than Python random.shuffle
+        self._rng.shuffle(self.cards)
+
+    def deal(self, n: int) -> List[Card]:
+        assert n <= len(self.cards), "Not enough cards to deal"
+        dealt = self.cards[:n]
+        self.cards = self.cards[n:]
+        return dealt
+
+    def __len__(self):
+        return len(self.cards)
+

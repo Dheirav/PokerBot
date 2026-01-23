@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Training outputs
+checkpoints/
+logs/
+match_logs/
+
+# Hyperparameter sweep results
+hyperparam_results/
+
+# TensorBoard
+runs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak
+*.log
+
+# Model files (if large)
+*.pkl
+*.h5
+*.pth
+
+# Data files (if large)
+*.csv
+*.json
+!hyperparam_results/**/*.json
+
+# Profiling
+*.prof
+*.stats
+profile.stats
