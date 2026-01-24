@@ -7,6 +7,33 @@ Usage:
     python scripts/hyperparam_sweep.py --quick       # Fast sweep (6 configs, 10 gens each)
     python scripts/hyperparam_sweep.py               # Normal (12 configs, 15 gens)
     python scripts/hyperparam_sweep.py --thorough    # Thorough (many configs, 20 gens)
+
+Analysis Tools:
+    After running a sweep, analyze results with:
+    
+    python scripts/analyze_convergence.py
+        - Identifies which configs have plateaued vs still improving
+        - Shows improvement rates across different training phases
+        - Warns if results are premature (configs still improving)
+        - Outputs: convergence_analysis.txt
+    
+    python scripts/visualize_hyperparam_sweep.py
+        - Generates comparison plots, heatmaps, learning curves
+        - Identifies best configurations and parameter effects
+        - Outputs: visualizations/*.png + analysis_report.txt
+        - Requires: matplotlib, seaborn
+
+Output Structure:
+    hyperparam_results/
+    └── sweep_YYYYMMDD_HHMMSS/
+        ├── results.json                  # Raw results data
+        ├── convergence_analysis.txt      # Convergence patterns (from analyze_convergence.py)
+        └── visualizations/               # Plots (from visualize_hyperparam_sweep.py)
+            ├── final_metrics_comparison.png
+            ├── fitness_progression.png
+            ├── hyperparameter_heatmaps.png
+            ├── top_configurations.png
+            └── analysis_report.txt
 """
 import argparse, sys, os, json, time, numpy as np
 from datetime import datetime

@@ -6,7 +6,7 @@ import numpy as np
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass
 
-from .policy_network import PolicyNetwork
+from .policy_network import PolicyNetwork, create_action_mask
 from .config import FitnessConfig, NetworkConfig
 
 
@@ -55,10 +55,10 @@ class AgentPlayer:
         
         Returns abstract action index (0-5).
         """
-        from engine import get_state_vector, get_action_mask
+        from engine import get_state_vector
         
         features = np.array(get_state_vector(game, player_id), dtype=np.float32)
-        mask = np.array(get_action_mask(game, player_id), dtype=np.float32)
+        mask = create_action_mask(game, player_id)
         
         action_idx = self.network.select_action(
             features, mask, self.rng, self.temperature
@@ -125,7 +125,7 @@ def play_match(agents: List[AgentPlayer], num_hands: int = 100,
     Returns:
         Dict mapping agent index to SessionStats
     """
-    from engine import PokerGame, Action, get_state_vector, get_action_mask
+    from engine import PokerGame, Action, get_state_vector
     from .fitness import abstract_action_to_engine_action
     
     config = config or FitnessConfig()

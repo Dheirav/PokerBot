@@ -15,6 +15,9 @@ This module implements an evolutionary algorithm for training poker AI agents. N
 - 📊 Population diversity maintenance
 - ⚡ Parallel evaluation with multiprocessing
 - 🎯 Configurable hyperparameters
+- ⚡ **Numba JIT-optimized** for 2-3× speedup
+
+**Performance**: ~4-6 sec/generation with Numba, ~13 sec without
 
 ---
 
@@ -253,7 +256,26 @@ network = PolicyNetwork.from_genome(best_genome, network_config)
 
 ## Optimizations
 
-### 1. Batched Forward Pass (1.4-1.5× speedup)
+### ✅ Implemented Optimizations
+
+#### 1. Numba JIT Compilation (2-3× speedup) - NEW!
+
+```python
+# Forward pass automatically uses JIT when Numba is available
+from training import PolicyNetwork, HAS_NUMBA
+
+network = PolicyNetwork(config)
+print(f"Numba JIT: {HAS_NUMBA}")  # True if numba installed
+
+# JIT-compiled functions:
+# - forward_pass_jit() - Single forward pass
+# - forward_batch_jit() - Batched forward pass  
+# - apply_mutation_jit() - Genome mutation
+```
+
+**Installation**: `pip install numba` for automatic 2-3× speedup
+
+#### 2. Batched Forward Pass (1.4-1.5× speedup)
 
 ```python
 # Process multiple decisions simultaneously
@@ -264,7 +286,7 @@ masks_batch = np.array([mask1, mask2, mask3])
 actions = network.select_action_batch(features_batch, masks_batch, rng)
 ```
 
-### 2. Multiprocessing (4× speedup)
+#### 3. Multiprocessing (4× speedup)
 
 ```python
 # Parallel genome evaluation
@@ -274,7 +296,7 @@ evolution = Evolution(..., num_workers=4)
 # Each worker evaluates subset of population
 ```
 
-### 3. Memory Pooling (1.2-1.4× speedup)
+#### 4. Memory Pooling (1.2-1.4× speedup)
 
 ```python
 # Reuse game objects
@@ -286,7 +308,7 @@ game = pool.acquire(...)  # Get from pool
 pool.release(game)  # Return to pool
 ```
 
-### 4. PCG64 RNG (1.15-1.2× speedup)
+#### 5. PCG64 RNG (1.15-1.2× speedup)
 
 ```python
 from numpy.random import PCG64, Generator
@@ -294,6 +316,8 @@ from numpy.random import PCG64, Generator
 # Faster than default Mersenne Twister
 rng = Generator(PCG64(seed))
 ```
+
+**See**: [NUMBA_JIT_GUIDE.md](../NUMBA_JIT_GUIDE.md) for JIT implementation details
 
 ---
 
@@ -446,10 +470,16 @@ evolution.fitness_function = custom_fitness
 
 ### Training Speed
 
-With all optimizations:
+**With Numba JIT** (recommended):
+- **Generation time**: ~4-6 seconds
+- **100 generations**: ~7-10 minutes
+- **Configuration**: 20 pop, 3000 hands/matchup, 12 matchups
+- **Total speedup**: ~400-500× from original
+
+**Without Numba**:
 - **Generation time**: ~13 seconds
 - **100 generations**: ~22 minutes
-- **Configuration**: 20 pop, 3000 hands/matchup, 12 matchups
+- **Total speedup**: ~175× from original
 
 ### Fitness Progression
 
@@ -466,14 +496,17 @@ Gen 100: Mean =  850 BB/100, Best = 1200 BB/100
 
 | Component | Speedup | Status |
 |-----------|---------|--------|
+| Fast hand eval | 13-16× | ✅ Active |
 | Multiprocessing | 4× | ✅ Active |
 | FeatureCache | 1.5-2× | ✅ Active |
 | forward_batch | 1.4-1.5× | ✅ Active |
 | Memory pooling | 1.2-1.4× | ✅ Active |
 | PCG64 RNG | 1.15-1.2× | ✅ Active |
-| Numba JIT | 2-3× | ⏳ Optional |
+| Other optimizations | 1.2-1.5× | ✅ Active |
+| **Numba JIT** | **2-3×** | ✅ **Active** |
 
-**Total**: ~175× faster than original
+**Total with Numba**: ~400-500× faster than original  
+**Total without Numba**: ~175× faster than original
 
 ---
 
@@ -516,6 +549,92 @@ class PolicyNetwork:
     
     def to_genome(self) -> np.ndarray
 ```
+
+---
+
+## Hyperparameter Optimization
+
+### Running Sweeps
+
+The training system includes tools for systematic hyperparameter optimization:
+
+```bash
+# Run a hyperparameter sweep
+python scripts/hyperparam_sweep.py --generations 20
+
+# Analyze convergence patterns
+python scripts/analyze_convergence.py
+
+# Visualize results (requires matplotlib)
+python scripts/visualize_hyperparam_sweep.py
+```
+
+### Convergence Analysis
+
+The convergence analyzer identifies which configurations have plateaued vs. still improving:
+
+```bash
+python scripts/analyze_convergence.py
+```
+
+**Output** (`convergence_analysis.txt`):
+- Convergence status for each configuration
+- Improvement rates (early/mid/late/recent phases)
+- Recommendations on which configs need longer training
+- Population size comparisons
+- Reliability warnings for premature conclusions
+
+**Status Categories**:
+- `STRONGLY_IMPROVING`: Gained >50 fitness in last 5 gens → needs much longer training
+- `IMPROVING`: Gained 20-50 fitness → needs more training
+- `SLOW_IMPROVEMENT`: Gained 5-20 fitness → may benefit from 10-20 more gens
+- `PLATEAUED`: Gained <5 fitness → likely converged
+
+**Example output**:
+```
+1. 🚀 p12_m6_h500_s0.15 - STRONGLY_IMPROVING
+   Final Fitness: 1780.3
+   Last 5 gen improvement: 995.4
+   💡 RECOMMENDATION: Run longer! Could reach 3771+ fitness
+```
+
+### Visualization Suite
+
+Generate comprehensive analysis plots:
+
+```bash
+python scripts/visualize_hyperparam_sweep.py
+```
+
+**Generated plots** (in `hyperparam_results/sweep_*/visualizations/`):
+1. `final_metrics_comparison.png` - Bar charts comparing all metrics
+2. `fitness_progression.png` - Learning curves over generations
+3. `hyperparameter_heatmaps.png` - Parameter interaction effects
+4. `top_configurations.png` - Detailed analysis of best performers
+5. `analysis_report.txt` - Text summary with insights
+
+### Best Practices
+
+**For reliable hyperparameter comparison:**
+
+1. **Run until convergence**: Use 50-100 generations, or adaptive stopping
+2. **Multiple trials**: Run each config 3-5 times for statistical significance
+3. **Check convergence status**: Only compare configs that have plateaued
+4. **Staged approach**:
+   - Phase 1: Quick sweep (20 gens) to eliminate poor configs
+   - Phase 2: Extended runs (50+ gens) on top 5-10 configs  
+   - Phase 3: Deep validation (3-5 trials) on top 3 configs
+
+**Common pitfalls**:
+- ✗ Comparing configs at fixed generation count (some may still be improving)
+- ✗ Single trials (high variance in fitness due to opponent sampling)
+- ✗ Ignoring overfitting gap (train fitness >> eval fitness)
+
+**Recommended parameters to test**:
+- `population_size`: 12, 20, 30 (larger = more diversity)
+- `mutation_sigma`: 0.05, 0.1, 0.15 (exploration strength)
+- `matchups_per_agent`: 2, 4, 6, 8 (evaluation robustness)
+- `hands_per_matchup`: 500, 1000, 1500 (fitness variance)
 
 ---
 

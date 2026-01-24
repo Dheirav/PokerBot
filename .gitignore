@@ -25,6 +25,9 @@ match_logs/
 
 # Hyperparameter sweep results
 hyperparam_results/
+!hyperparam_results/**/*.json
+hyperparam_results/**/convergence_analysis.txt
+hyperparam_results/**/visualizations/
 
 # TensorBoard
 runs/

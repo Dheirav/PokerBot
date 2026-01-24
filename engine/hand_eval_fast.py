@@ -3,6 +3,7 @@ Fast hand evaluation using iterative approach instead of checking all combinatio
 This is 10-20x faster than the combinatorial approach.
 Optimized with Numba JIT compilation for 2-3× additional speedup.
 """
+import numpy as np
 from typing import List, Tuple
 from collections import Counter
 from .cards import Card, RANKS
@@ -18,6 +19,58 @@ except ImportError:
         def decorator(func):
             return func
         return decorator
+
+
+@jit(nopython=True, cache=True, fastmath=True)
+def find_straight_jit(rank_values):
+    """
+    JIT-compiled straight detection.
+    Returns (has_straight, high_card_value).
+    """
+    # Get unique values and sort descending
+    unique = np.unique(rank_values)[::-1]
+    
+    # Check regular straights (5 consecutive cards)
+    for i in range(len(unique) - 4):
+        if unique[i] - unique[i+4] == 4:
+            return True, unique[i]
+    
+    # Check wheel (A-2-3-4-5): values 12,0,1,2,3
+    has_ace = 12 in unique
+    has_five = 3 in unique
+    has_four = 2 in unique
+    has_three = 1 in unique
+    has_two = 0 in unique
+    
+    if has_ace and has_two and has_three and has_four and has_five:
+        return True, 3  # 5-high straight
+    
+    return False, -1
+
+
+@jit(nopython=True, cache=True, fastmath=True)
+def count_ranks_jit(rank_values):
+    """
+    JIT-compiled rank counting.
+    Returns array where index=rank_value, value=count.
+    """
+    counts = np.zeros(13, dtype=np.int32)
+    for val in rank_values:
+        counts[val] += 1
+    return counts
+
+
+@jit(nopython=True, cache=True, fastmath=True)
+def count_suits_jit(suit_indices):
+    """
+    JIT-compiled suit counting.
+    Returns array where index=suit_index, value=count.
+    """
+    counts = np.zeros(4, dtype=np.int32)
+    for suit_idx in suit_indices:
+        counts[suit_idx] += 1
+    return counts
+
 
 def evaluate_hand_fast(cards: List[Card]) -> HandEvalResult:
     """
