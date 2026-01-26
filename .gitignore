@@ -9,6 +9,10 @@ dist/
 build/
 *.egg
 
+# Numba JIT cache files
+*.nbc
+*.nbi
+
 # Virtual Environment
 venv/
 env/
@@ -18,19 +22,22 @@ ENV/
 # Jupyter Notebook
 .ipynb_checkpoints
 
-# Training outputs
+# Training outputs and checkpoints
 checkpoints/
 logs/
 match_logs/
 
 # Hyperparameter sweep results
 hyperparam_results/
-!hyperparam_results/**/*.json
-hyperparam_results/**/convergence_analysis.txt
-hyperparam_results/**/visualizations/
+
+# Tournament reports (large directories with PNGs and reports)
+tournament_reports/
 
 # TensorBoard
 runs/
+
+# Pytest cache
+.pytest_cache/
 
 # IDE
 .vscode/
@@ -46,19 +53,18 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.bak
-*.log
 
 # Model files (if large)
 *.pkl
 *.h5
 *.pth
 
-# Data files (if large)
-*.csv
-*.json
-!hyperparam_results/**/*.json
-
 # Profiling
 *.prof
 *.stats
 profile.stats
+
+# Generated reports (user can regenerate these)
+deep_sweep_report.txt
+tournament_history_analysis.txt
+ai_hands_log.txt

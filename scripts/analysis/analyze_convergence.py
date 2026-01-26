@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+  #!/usr/bin/env python3
 """
 Analyze convergence patterns from hyperparameter sweep results.
 Identifies which configurations have plateaued vs still improving.
@@ -43,38 +43,40 @@ def analyze_convergence(result: Dict) -> Dict:
     
     Returns dict with convergence metrics.
     """
-    best_progress = result['best_progress']
+    best_progress = result.get('best_progress', [])
     n_gens = len(best_progress)
-    
+    if n_gens == 0:
+        raise ValueError(f"SKIP: {result.get('name', '<unnamed>')} has no best_progress data.")
+
     # Calculate improvement in different phases
     if n_gens >= 5:
         early_improvement = best_progress[min(4, n_gens-1)] - best_progress[0]
     else:
         early_improvement = 0
-    
+
     if n_gens >= 15:
         mid_improvement = best_progress[min(14, n_gens-1)] - best_progress[10]
     else:
         mid_improvement = 0
-    
+
     if n_gens >= 20:
         late_improvement = best_progress[min(19, n_gens-1)] - best_progress[15]
     else:
         late_improvement = 0
-    
+
     # Check if still improving at end
     last_5_gens = min(5, n_gens)
     last_improvement = best_progress[-1] - best_progress[-last_5_gens]
-    
+
     # Calculate improvement rate (fitness per generation)
     total_improvement = best_progress[-1] - best_progress[0]
     avg_improvement_rate = total_improvement / n_gens if n_gens > 0 else 0
-    
+
     # Recent improvement rate (last 25% of generations)
     recent_start = max(0, n_gens - n_gens // 4)
     recent_improvement = best_progress[-1] - best_progress[recent_start]
     recent_rate = recent_improvement / (n_gens - recent_start) if recent_start < n_gens else 0
-    
+
     # Determine convergence status
     if last_improvement > 50:
         status = "STRONGLY_IMPROVING"
@@ -88,7 +90,7 @@ def analyze_convergence(result: Dict) -> Dict:
     else:
         status = "PLATEAUED"
         emoji = "✓"
-    
+
     return {
         'early_improvement': early_improvement,
         'mid_improvement': mid_improvement,
@@ -114,14 +116,21 @@ def print_convergence_analysis(results: List[Dict], top_n: int = None):
     
     # Analyze all configs
     analyses = []
+    skipped = 0
     for r in results:
-        analysis = analyze_convergence(r)
-        analyses.append({
-            'name': r['name'],
-            'final_fitness': r['final_best_fitness'],
-            'config': r['config'],
-            **analysis
-        })
+        try:
+            analysis = analyze_convergence(r)
+            analyses.append({
+                'name': r['name'],
+                'final_fitness': r['final_best_fitness'],
+                'config': r['config'],
+                **analysis
+            })
+        except Exception as e:
+            print(f"[SKIP] {r.get('name', '<unnamed>')}: {e}")
+            skipped += 1
+    if skipped:
+        print(f"\n[INFO] Skipped {skipped} configs with missing or empty progress data.")
     
     # Sort by final fitness
     analyses.sort(key=lambda x: x['final_fitness'], reverse=True)

@@ -44,6 +44,7 @@ def main():
     parser.add_argument('--arch2', type=str, required=True, help='Agent 2 architecture, e.g. "17 128 64 6"')
     parser.add_argument('--hands', type=int, default=5000, help='Number of hands to play')
     parser.add_argument('--players', type=int, default=2, help='Number of players (default 2)')
+    parser.add_argument('--log', action='store_true', help='Enable match logging to file (default: off)')
     args = parser.parse_args()
 
     arch1 = parse_arch(args.arch1)
@@ -61,15 +62,19 @@ def main():
 
     # Load agents
     import logging
-    import datetime
-    os.makedirs('match_logs', exist_ok=True)
-    agent1_name = os.path.basename(args.agent1).replace('.npy','')
-    agent2_name = os.path.basename(args.agent2).replace('.npy','')
-    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-    log_filename = f"match_logs/{agent1_name}_vs_{agent2_name}_{timestamp}.log"
-    logging.basicConfig(filename=log_filename, level=logging.INFO,
-                        format='%(asctime)s %(message)s')
-    print(f"Logging match to {log_filename}")
+    logging_enabled = args.log
+    if logging_enabled:
+        import datetime
+        os.makedirs('match_logs', exist_ok=True)
+        agent1_name = os.path.basename(args.agent1).replace('.npy','')
+        agent2_name = os.path.basename(args.agent2).replace('.npy','')
+        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        log_filename = f"match_logs/{agent1_name}_vs_{agent2_name}_{timestamp}.log"
+        logging.basicConfig(filename=log_filename, level=logging.INFO,
+                            format='%(asctime)s %(message)s')
+        print(f"Logging match to {log_filename}")
+    else:
+        logging.basicConfig(level=logging.CRITICAL)  # Suppress all logging output
 
     agent1 = load_agent(args.agent1, arch1)
     agent2 = load_agent(args.agent2, arch2)
@@ -84,7 +89,8 @@ def main():
     hand = 0
     log_header = f"Match: Agent1={args.agent1} vs Agent2={args.agent2} | Arch={arch1}\n"
     print(log_header.strip())
-    logging.info(log_header.strip())
+    if logging_enabled:
+        logging.info(log_header.strip())
     while hand < args.hands and all(s > 0 for s in stacks):
         # Create a new PokerGame for each hand with a different seed
         import time
@@ -199,25 +205,30 @@ def main():
         print(f"Winnings: {winnings}")
         print(f"Total chips after hand: {total_chips}")
         print(log_line)
-        logging.info("; ".join(hole_cards_log))
-        logging.info(community_cards_log)
-        logging.info("; ".join(hand_actions))
-        logging.info(f"Pot at showdown: {game.state.pot.total}")
-        logging.info(f"Winnings: {winnings}")
-        logging.info(f"Total chips after hand: {total_chips}")
-        logging.info(log_line)
+        if logging_enabled:
+            logging.info("; ".join(hole_cards_log))
+            logging.info(community_cards_log)
+            logging.info("; ".join(hand_actions))
+            logging.info(f"Pot at showdown: {game.state.pot.total}")
+            logging.info(f"Winnings: {winnings}")
+            logging.info(f"Total chips after hand: {total_chips}")
+            logging.info(log_line)
         hand += 1
     print(f"Final stacks: Agent 1: {stacks[0]}, Agent 2: {stacks[1]}")
-    logging.info(f"Final stacks: Agent 1: {stacks[0]}, Agent 2: {stacks[1]}")
+    if logging_enabled:
+        logging.info(f"Final stacks: Agent 1: {stacks[0]}, Agent 2: {stacks[1]}")
     if stacks[0] <= 0:
         print("Agent 2 wins by elimination!")
-        logging.info("Agent 2 wins by elimination!")
+        if logging_enabled:
+            logging.info("Agent 2 wins by elimination!")
     elif stacks[1] <= 0:
         print("Agent 1 wins by elimination!")
-        logging.info("Agent 1 wins by elimination!")
+        if logging_enabled:
+            logging.info("Agent 1 wins by elimination!")
     else:
         print("No elimination. Chips after max hands.")
-        logging.info("No elimination. Chips after max hands.")
+        if logging_enabled:
+            logging.info("No elimination. Chips after max hands.")
 
 if __name__ == "__main__":
     main()

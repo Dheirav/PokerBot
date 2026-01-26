@@ -289,27 +289,58 @@ assert np.allclose(original_genome, reconstructed_genome)
 
 ---
 
+## Related Scripts
+
+Scripts that use this module:
+- **`scripts/train.py`**: Main training script (genome creation and evolution)
+- **`scripts/analyze_top_agents.py`**: Agent analysis (genome parameter inspection)
+- **`scripts/visualize_agent_behavior.py`**: Behavior visualization (weight distributions)
+- **`scripts/match_agents.py`**: Agent matchups (genome loading and comparison)
+- **`scripts/round_robin_agents_config.py`**: Tournaments (multi-agent genome management)
+
+---
+
 ## Future Utilities
 
-Potential additions to this module:
+**High Priority**:
+- [ ] Genome compression/decompression (save storage space for checkpoints)
+- [ ] Genome distance metrics (L2, cosine similarity for diversity analysis)
+- [ ] Parameter statistics per layer (mean, std, min, max for debugging)
 
-- [ ] Genome compression/decompression
-- [ ] Genome distance metrics (L2, cosine similarity)
-- [ ] Genome interpolation (for crossover)
-- [ ] Parameter statistics (mean, std per layer)
-- [ ] Visualization helpers (plot weight distributions)
-- [ ] Serialization utilities (save/load compressed)
-- [ ] Gradient extraction (for gradient-based search)
+**Medium Priority**:
+- [ ] Genome interpolation for advanced crossover strategies
+- [ ] Visualization helpers (plot weight distributions, gradient flows)
+- [ ] Gradient extraction for hybrid evolutionary + gradient methods
+- [ ] Weight pruning and quantization (model compression)
+
+**Low Priority**:
+- [ ] Serialization utilities (JSON, MessagePack for interchange)
+- [ ] Genome versioning (track parameter evolution over time)
+- [ ] Automatic architecture inference from genome size
 
 ---
 
 ## Integration
 
 Used extensively by:
-- `training/genome.py` - Genome creation and mutation
-- `training/policy_network.py` - Network initialization
-- `training/evolution.py` - Population management
-- `scripts/analyze_top_agents.py` - Analysis tools
+- **`training/genome.py`**: Genome creation and mutation operations
+- **`training/policy_network.py`**: Network initialization from genome
+- **`training/evolution.py`**: Population management and breeding
+- **`scripts/analyze_top_agents.py`**: Elite agent analysis tools
+- **`scripts/train.py`**: Main training loop
+
+---
+
+## Troubleshooting
+
+**Issue**: Shape mismatch when loading genome  
+**Solution**: Verify `network_config` matches the genome's original architecture
+
+**Issue**: Memory usage too high with large populations  
+**Solution**: Use numpy views instead of copies; consider genome compression
+
+**Issue**: Slow genome operations  
+**Solution**: Already optimized at O(P); if still slow, check for unnecessary copies
 
 ---
 

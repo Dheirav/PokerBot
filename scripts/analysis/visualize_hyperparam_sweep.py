@@ -58,42 +58,46 @@ def plot_fitness_progression(results, output_dir):
     # Best progress
     ax = axes[0, 0]
     for r in results:
-        ax.plot(r['best_progress'], label=r['name'], marker='o', markersize=3, alpha=0.7)
+        if r.get('best_progress') and len(r['best_progress']) > 0:
+            ax.plot(r['best_progress'], label=r['name'], marker='o', markersize=3, alpha=0.7)
     ax.set_xlabel('Generation', fontweight='bold')
     ax.set_ylabel('Best Fitness', fontweight='bold')
     ax.set_title('Best Fitness Progress', fontsize=12, fontweight='bold')
     ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
     ax.grid(True, alpha=0.3)
-    
+
     # Train fitness
     ax = axes[0, 1]
     for r in results:
-        ax.plot(r['train_fitness'], label=r['name'], marker='o', markersize=3, alpha=0.7)
+        if r.get('train_fitness') and len(r['train_fitness']) > 0:
+            ax.plot(r['train_fitness'], label=r['name'], marker='o', markersize=3, alpha=0.7)
     ax.set_xlabel('Generation', fontweight='bold')
     ax.set_ylabel('Train Fitness', fontweight='bold')
     ax.set_title('Training Fitness (Current Gen)', fontsize=12, fontweight='bold')
     ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
     ax.grid(True, alpha=0.3)
-    
+
     # Generation times
     ax = axes[1, 0]
     for r in results:
-        ax.plot(r['gen_times'], label=r['name'], marker='o', markersize=3, alpha=0.7)
+        if r.get('gen_times') and len(r['gen_times']) > 0:
+            ax.plot(r['gen_times'], label=r['name'], marker='o', markersize=3, alpha=0.7)
     ax.set_xlabel('Generation', fontweight='bold')
     ax.set_ylabel('Time (seconds)', fontweight='bold')
     ax.set_title('Generation Training Time', fontsize=12, fontweight='bold')
     ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
     ax.grid(True, alpha=0.3)
-    
+
     # Convergence speed (normalized best progress)
     ax = axes[1, 1]
     for r in results:
-        best_progress = np.array(r['best_progress'])
-        if best_progress[-1] > 0:
-            normalized = best_progress / best_progress[-1]
-        else:
-            normalized = best_progress
-        ax.plot(normalized, label=r['name'], marker='o', markersize=3, alpha=0.7)
+        if r.get('best_progress') and len(r['best_progress']) > 0:
+            best_progress = np.array(r['best_progress'])
+            if best_progress[-1] > 0:
+                normalized = best_progress / best_progress[-1]
+            else:
+                normalized = best_progress
+            ax.plot(normalized, label=r['name'], marker='o', markersize=3, alpha=0.7)
     ax.set_xlabel('Generation', fontweight='bold')
     ax.set_ylabel('Normalized Best Fitness', fontweight='bold')
     ax.set_title('Convergence Speed (Normalized)', fontsize=12, fontweight='bold')

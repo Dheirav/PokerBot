@@ -748,16 +748,74 @@ See [training/README.md](../training/README.md) for details.
 
 ---
 
-## Future Enhancements
+## Related Scripts
 
-- [ ] Tournament support (increasing blinds)
-- [ ] Omaha Hold'em variant
-- [ ] Short deck poker (6+ Hold'em)
-- [ ] Deal insurance / run-it-twice
-- [ ] Time bank / shot clock
-- [ ] More detailed hand history (timestamps, decision time)
-- [ ] Live hand visualization
+**Game Simulation**:
+- **`scripts/train.py`**: Uses engine for self-play training
+- **`scripts/match_agents.py`**: Head-to-head matches
+- **`scripts/eval_baseline.py`**: Agent evaluation
+- **`scripts/round_robin_agents_config.py`**: Tournament simulation
+
+**Testing & Debugging**:
+- **`scripts/test_cli.py`**: Interactive poker game
+- **`scripts/test_ai_hands.py`**: Scenario testing
+- **`scripts/test_ai_features.py`**: Feature extraction verification
+
+**Analysis**:
+- **`scripts/visualize_agent_behavior.py`**: Uses engine state for analysis
+- **`scripts/plot_history.py`**: Training progress (hand counts, etc.)
 
 ---
 
-**For more information, see main [README.md](../README.md)**
+## Future Enhancements
+
+**Game Variants**:
+- [ ] **Tournament support**: Increasing blinds, antes, payout structures
+- [ ] **Omaha Hold'em**: 4 hole cards, use exactly 2
+- [ ] **Short deck poker** (6+ Hold'em): 36-card deck, different hand rankings
+- [ ] **Pot-Limit Omaha (PLO)**: Pot-sized raises only
+- [ ] **Razz/Lowball variants**: Lowest hand wins
+
+**Advanced Features**:
+- [ ] **Deal insurance**: Side bets on outcomes
+- [ ] **Run-it-twice**: Deal board multiple times after all-in
+- [ ] **Time bank**: Thinking time limits per player
+- [ ] **Straddles**: Optional blind raises
+- [ ] **Button ante**: Alternative ante structure
+
+**Performance & Analysis**:
+- [ ] **Faster hand evaluation**: C++ extension (2-3× speedup)
+- [ ] **Hand history export**: PGN-style format for analysis tools
+- [ ] **Detailed timestamps**: Track decision time per action
+- [ ] **Live hand visualization**: Web-based real-time display
+- [ ] **Replay system**: Step through hands move-by-move
+
+**Infrastructure**:
+- [ ] **Game state serialization**: Save/load mid-hand
+- [ ] **Undo/redo actions**: For debugging and analysis
+- [ ] **Configurable deck**: Custom cards, wild cards
+- [ ] **Multi-currency**: Tournament chips, cash game dollars
+
+---
+
+## Performance Tuning
+
+**Current optimizations active**:
+- ✅ Fast hand evaluator (13-16× speedup)
+- ✅ Feature caching (1.5-2× speedup)
+- ✅ NumPy RNG (1.05-1.1× speedup)
+- ✅ Memory pooling for long simulations
+- ✅ History tracking disabled by default
+
+**Throughput**: ~2,800 hands/second (~10M hands/hour)
+
+**To maximize performance**:
+1. Use `hand_eval_fast.py` (imported by default)
+2. Disable history: `game.history = None`
+3. Use `FeatureCache` for repeated feature extraction
+4. Use `GamePool` for object reuse in long runs
+5. Minimize `print()` statements in hot loops
+
+---
+
+**For more information, see main [README.md](../README.md) and [training/README.md](../training/README.md)**

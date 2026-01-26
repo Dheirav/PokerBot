@@ -42,17 +42,32 @@ This project implements a **Texas Hold'em poker AI** trained through evolutionar
 
 ```
 PokerBot/
-├── engine/              # Poker game engine (cards, rules, hand evaluation)
-├── training/            # Evolutionary training system (genomes, networks, fitness)
-├── agents/              # Pre-trained and baseline agents
-├── scripts/             # Training, evaluation, and analysis scripts
-├── evaluator/           # Hand strength and equity calculations
-├── utils/               # Utility functions and helpers
-├── tests/               # Unit tests
-├── checkpoints/         # Saved training runs and models
-├── logs/                # Training logs
-└── match_logs/          # Game history logs
+├── engine/                  # Poker game engine (cards, rules, hand evaluation)
+├── training/                # Evolutionary training system (genomes, networks, fitness)
+├── agents/                  # Pre-trained and baseline agents (random, heuristic)
+├── scripts/                 # Training, evaluation, and analysis scripts (18 total)
+├── evaluator/               # Hand strength and equity calculations
+├── utils/                   # Utility functions and helpers
+├── tests/                   # Unit tests
+├── data/                    # Placeholder for training data (currently unused)
+├── checkpoints/             # Saved training runs and models
+├── hyperparam_results/      # Hyperparameter sweep results and visualizations
+├── tournament_reports/      # Round-robin tournament results and charts
+├── logs/                    # Training logs and tensorboard events
+├── match_logs/              # Game history logs (optional, disabled by default)
+├── OPTIMIZATION_STATUS.md   # Complete optimization roadmap
+├── OPTIMIZATION_SUMMARY.md  # Quick optimization reference
+├── NUMBA_JIT_GUIDE.md       # Numba JIT compilation patterns
+├── FORWARD_BATCH_INTEGRATION.md  # Batched inference documentation
+└── deep_sweep_report.txt    # Latest deep hyperparameter sweep results
 ```
+
+**Module Documentation**:
+- [engine/README.md](engine/README.md) - Poker engine internals
+- [training/README.md](training/README.md) - Training system details
+- [agents/README.md](agents/README.md) - Baseline agents
+- [evaluator/README.md](evaluator/README.md) - Hand ranking and equity
+- [utils/README.md](utils/README.md) - Utility functions
 
 ---
 
@@ -157,13 +172,21 @@ python scripts/train.py \
 Find optimal training parameters:
 
 ```bash
-# Run hyperparameter sweep
+# Quick hyperparameter sweep
 python scripts/hyperparam_sweep.py \
     --generations 20 \      # Test for 20 generations
     --trials 10             # Try 10 configurations
 
+# Deep hyperparameter sweep (comprehensive search)
+python scripts/deep_hyperparam_sweep.py \
+    --generations 50 \      # Longer evaluation
+    --trials 20             # More configurations
+
 # Analyze convergence patterns (detects if configs need longer training)
 python scripts/analyze_convergence.py
+
+# Generate comprehensive report
+python scripts/report_deep_sweep.py
 
 # Visualize results (requires matplotlib, seaborn)
 python scripts/visualize_hyperparam_sweep.py
@@ -171,8 +194,31 @@ python scripts/visualize_hyperparam_sweep.py
 
 **Output**: 
 - Raw results in `hyperparam_results/sweep_YYYYMMDD_HHMMSS/results.json`
+- Deep sweep report in `deep_sweep_report.txt`
 - Convergence analysis in `convergence_analysis.txt`
 - Visualizations in `visualizations/` folder (comparison plots, heatmaps, etc.)
+
+### Round-Robin Tournaments
+Pit trained agents against each other to find the best performer:
+
+```bash
+# Basic round-robin (all agents vs all agents)
+python scripts/round_robin_agents.py
+
+# Enhanced round-robin with config insights and visualizations
+python scripts/round_robin_agents_config.py
+```
+
+**Output**:
+- Timestamped reports in `tournament_reports/tournament_YYYYMMDD_HHMMSS/`
+- JSON report with detailed matchup results
+- Visualizations: win/loss charts, parameter performance, head-to-head heatmaps, chip distribution
+
+**Features**:
+- Sorted leaderboard by wins/losses
+- Per-agent breakdown of who they beat/lost to
+- Parameter insights (which population sizes, mutation sigmas, etc. perform best)
+- Automatic visualization generation
 
 ### Agent Evaluation
 Test agent performance:
@@ -189,18 +235,90 @@ python scripts/visualize_agent_behavior.py genome.pkl
 ```
 
 ### Analysis & Visualization
-Analyze training progress:
+Analyze training progress and agent behavior:
 
 ```bash
-# Plot fitness curves
+# Plot fitness curves from training history
 python scripts/plot_history.py checkpoints/evolution_run/
 
-# Analyze top agents
+# Analyze top agents (detailed performance breakdown, win rates, strategy analysis)
 python scripts/analyze_top_agents.py checkpoints/evolution_run/
 
-# Test hand scenarios
+# Visualize agent behavior patterns (action distributions, aggression, hand selection)
+python scripts/visualize_agent_behavior.py checkpoints/evolution_run/best_genome.npy
+
+# Test AI on specific hand scenarios (debugging tool)
 python scripts/test_ai_hands.py
+
+# Test AI feature extraction (verify input features are correct)
+python scripts/test_ai_features.py
+
+# Test poker engine CLI interactively
+python scripts/test_cli.py
+
+# Benchmark JIT compilation performance (measure Numba speedup)
+python scripts/benchmark_jit.py
 ```
+
+**Analysis Tools**:
+- `plot_history.py`: Generates fitness curves, diversity metrics, and convergence plots
+- `analyze_top_agents.py`: Deep dive into elite agents' performance statistics
+- `visualize_agent_behavior.py`: Action heatmaps by position/hand strength
+- `analyze_convergence.py`: Detect if training configs need more generations
+
+**Testing Tools**:
+- `test_ai_hands.py`: Test agent decisions on specific poker scenarios
+- `test_ai_features.py`: Verify feature extraction correctness
+- `test_cli.py`: Interactive poker game testing
+
+**Performance Tools**:
+- `benchmark_jit.py`: Compare Numba vs pure Python performance
+
+### Utilities
+
+```bash
+# Clean old checkpoints to save disk space
+python scripts/cleanup_checkpoints.py --keep 5  # Keep only 5 most recent
+python scripts/cleanup_checkpoints.py --older-than 7  # Keep last 7 days
+```
+
+**Purpose**: Manage storage by removing old training runs while preserving recent/best agents.
+
+---
+
+## 📂 Complete Scripts Reference
+
+### Training Scripts
+- **`train.py`**: Main evolutionary training script with self-play evaluation
+- **`hyperparam_sweep.py`**: Quick hyperparameter search across configurations
+- **`deep_hyperparam_sweep.py`**: Comprehensive hyperparameter optimization with longer runs
+- **`report_deep_sweep.py`**: Generate detailed report from deep sweep results
+
+### Evaluation Scripts
+- **`eval_baseline.py`**: Test trained agent vs random/heuristic opponents
+- **`match_agents.py`**: Head-to-head matches between two agents (use `--log` to enable match logging)
+- **`round_robin_agents.py`**: Basic round-robin tournament (all vs all)
+- **`round_robin_agents_config.py`**: Enhanced tournament with visualizations and config insights
+
+### Analysis Scripts  
+- **`plot_history.py`**: Generate fitness curves and training progression charts
+- **`analyze_top_agents.py`**: Detailed performance analysis of elite agents
+- **`analyze_convergence.py`**: Detect if training configs need more generations
+- **`visualize_agent_behavior.py`**: Action distribution heatmaps by situation
+- **`visualize_hyperparam_sweep.py`**: Generate comparison plots for hyperparameter sweeps
+
+### Testing & Debugging Scripts
+- **`test_ai_hands.py`**: Test agent decisions on specific poker scenarios
+- **`test_ai_features.py`**: Verify feature extraction is working correctly
+- **`test_cli.py`**: Interactive poker game for testing engine
+
+### Performance Scripts
+- **`benchmark_jit.py`**: Measure Numba JIT compilation speedup
+
+### Utility Scripts
+- **`cleanup_checkpoints.py`**: Manage disk space by removing old training runs
+
+**Total**: 18 scripts covering training, evaluation, analysis, testing, and utilities
 
 ---
 
@@ -377,23 +495,182 @@ python scripts/test_cli.py
 
 ## 📚 Documentation
 
-### Detailed Guides
-- **[engine/README.md](engine/README.md)**: Poker engine internals
-- **[training/README.md](training/README.md)**: Training system details
-- **[utils/README.md](utils/README.md)**: Utility functions
+### Module READMEs (Component Documentation)
 
-### Optimization Documentation
-- **[OPTIMIZATION_STATUS.md](OPTIMIZATION_STATUS.md)**: Complete optimization roadmap
-- **[COMPLETE_OPTIMIZATION_HISTORY.md](COMPLETE_OPTIMIZATION_HISTORY.md)**: Week 1-2 optimization journey
-- **[ALL_POSSIBLE_OPTIMIZATIONS.md](ALL_POSSIBLE_OPTIMIZATIONS.md)**: Catalog of 20+ optimizations
-- **[FORWARD_BATCH_INTEGRATION.md](FORWARD_BATCH_INTEGRATION.md)**: Batched inference details
+- **[engine/README.md](engine/README.md)** (764 lines)
+  - Complete poker engine API reference
+  - Card, action, pot, state, game classes
+  - Hand evaluation (standard and fast)
+  - Feature extraction for AI
+  - CLI interface usage
+  - Performance benchmarks
 
-### Configuration
-- **[training/config.py](training/config.py)**: All configuration options
+- **[training/README.md](training/README.md)** (717 lines)
+  - Evolutionary training algorithm details
+  - Neural network policy architecture
+  - Genome representation and mutations
+  - Fitness evaluation through self-play
+  - Configuration options
+  - Hyperparameter optimization guide
+  - Numba JIT optimizations
+
+- **[agents/README.md](agents/README.md)** (230+ lines)
+  - RandomAgent: Baseline random action agent
+  - HeuristicAgent: Rule-based poker AI
+  - Usage examples and API reference
+  - Performance expectations
+  - Extension guide for custom agents
+
+- **[evaluator/README.md](evaluator/README.md)** (300+ lines)
+  - Hand ranking algorithm (7-card evaluation)
+  - Equity calculation (exact and Monte Carlo)
+  - Usage with pot odds and decision making
+  - Performance characteristics
+  - Integration examples
+
+- **[utils/README.md](utils/README.md)** (317 lines)
+  - Genome transformation utilities
+  - Network parameter conversion
+  - Helper functions for AI system
+
+### Optimization Documentation (Performance & Implementation)
+
+- **[OPTIMIZATION_STATUS.md](OPTIMIZATION_STATUS.md)** (625 lines)
+  - **Purpose**: Complete optimization roadmap and status
+  - 11 implemented optimizations (400-500× speedup achieved)
+  - Available but not implemented (C++/GPU/Cython)
+  - Performance timeline and benchmarks
+  - Learning impact analysis
+  - Recommended next steps
+
+- **[OPTIMIZATION_SUMMARY.md](OPTIMIZATION_SUMMARY.md)**
+  - **Purpose**: Quick reference for all optimizations
+  - One-page summary of speedups
+  - Phase-by-phase breakdown
+  - Current performance metrics
+
+- **[NUMBA_JIT_GUIDE.md](NUMBA_JIT_GUIDE.md)** (1062 lines)
+  - **Purpose**: Complete Numba JIT implementation guide
+  - How to install and use Numba
+  - JIT-compiled functions reference
+  - Implementation patterns and best practices
+  - Troubleshooting and debugging
+  - Before/after benchmarks
+
+- **[FORWARD_BATCH_INTEGRATION.md](FORWARD_BATCH_INTEGRATION.md)** (270 lines)
+  - **Purpose**: Batched neural network inference documentation
+  - 1.4-1.5× speedup explanation
+  - Technical implementation details
+  - Learning impact verification (zero impact)
+  - Code examples and usage
+
+### Results & Analysis Files
+
+- **`deep_sweep_report.txt`**
+  - **Purpose**: Latest deep hyperparameter sweep results
+  - Generated by: `python scripts/report_deep_sweep.py`
+  - Top configurations by fitness
+  - Convergence analysis
+  - Parameter insights
+
+- **`hyperparam_results/`**
+  - **Purpose**: All hyperparameter sweep outputs
+  - JSON results files
+  - Visualization plots
+  - Convergence analysis reports
+
+- **`tournament_reports/`**
+  - **Purpose**: Round-robin tournament results
+  - Timestamped report folders
+  - JSON matchup data
+  - Win/loss charts, heatmaps, parameter analysis
+
+### Configuration Files
+
+- **[training/config.py](training/config.py)**
+  - **Purpose**: All configuration dataclasses
+  - NetworkConfig: Neural network architecture
+  - EvolutionConfig: Population, mutation, selection
+  - FitnessConfig: Evaluation settings
 
 ---
 
-## 🛠️ Advanced Usage
+## � Future Optimizations & Improvements
+
+### Performance Optimizations (Available but Not Implemented)
+
+**C++ Extensions** (2-3× speedup):
+- Rewrite hand evaluator in C++ with Python bindings
+- Compile-time optimization opportunities
+- Direct memory access without Python overhead
+- **Effort**: 2-3 days | **Expected**: 0.5-1 sec/generation
+
+**GPU Acceleration** (3-5× speedup):
+- CuPy/JAX for batched neural network operations
+- Parallel game simulation on GPU
+- Large population training (100+ agents)
+- **Effort**: 3-5 days | **Expected**: 0.5-2 sec/generation
+
+**Cython Compilation** (1.5-2× speedup):
+- Compile hot paths with static typing
+- Hybrid Python/C approach
+- Gradual migration of critical functions
+- **Effort**: 2-4 days | **Expected**: 2-3 sec/generation
+
+**SIMD Vectorization** (1.5-2× speedup):
+- Auto-vectorization with compiler flags
+- Manual SIMD intrinsics for critical loops
+- Batch processing optimizations
+- **Effort**: 1-2 days | **Expected**: 2-4 sec/generation
+
+### Algorithm Improvements
+
+**Advanced Evolutionary Algorithms**:
+- CMA-ES (Covariance Matrix Adaptation)
+- Novelty Search for diverse strategies
+- Multi-objective optimization (BB/100 + diversity)
+- Island model evolution (parallel populations)
+
+**Neural Network Architectures**:
+- LSTM/GRU for temporal game state
+- Transformer models for attention mechanisms
+- Residual connections for deeper networks
+- Ensemble models for robust play
+
+**Training Enhancements**:
+- Opponent modeling and exploitation
+- Transfer learning from expert games
+- Curriculum learning (gradual difficulty increase)
+- Self-play with historical opponents
+
+### Feature Enhancements
+
+**Poker Features**:
+- Multi-table tournament (MTT) support
+- Pot-limit Omaha (PLO) variant
+- Short-deck (6+ Hold'em) support
+- Real-time opponent profiling
+
+**Infrastructure**:
+- Distributed training across machines
+- Cloud training integration (AWS/GCP)
+- Automated hyperparameter optimization (Optuna/Ray Tune)
+- Model versioning and experiment tracking (MLflow)
+
+**User Interface**:
+- Web-based training dashboard
+- Real-time visualization of training progress
+- Interactive agent playground
+- Tournament bracket system
+
+**See**:
+- [OPTIMIZATION_STATUS.md](OPTIMIZATION_STATUS.md) for detailed optimization roadmap
+- [NUMBA_JIT_GUIDE.md](NUMBA_JIT_GUIDE.md) for JIT compilation patterns
+- Module READMEs for component-specific improvements
+
+---
+
+## �🛠️ Advanced Usage
 
 ### Custom Network Architecture
 

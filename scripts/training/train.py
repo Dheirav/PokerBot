@@ -260,6 +260,58 @@ def main():
             print("\nFinal evaluation against random opponents...")
             baseline_score = trainer.evaluate_best(num_hands=2000)
             print(f"Best agent vs random: {baseline_score:.2f} BB/100")
+
+            # --- Write report.txt in checkpoint dir ---
+            report_path = os.path.join(trainer.output_dir, 'report.txt')
+            try:
+                with open(report_path, 'w') as f:
+                    f.write(f"PokerBot Training Report\n")
+                    f.write(f"=======================\n\n")
+                    f.write(f"Experiment: {getattr(trainer.config, 'experiment_name', 'N/A')}\n")
+                    f.write(f"Population size: {trainer.config.evolution.population_size}\n")
+                    f.write(f"Generations: {trainer.config.num_generations}\n")
+                    f.write(f"Hands per matchup: {trainer.config.fitness.hands_per_matchup}\n")
+                    f.write(f"Matchups per agent: {trainer.config.fitness.matchups_per_agent}\n")
+                    f.write(f"Mutation sigma: {trainer.config.evolution.mutation_sigma}\n")
+                    f.write(f"Hidden layers: {trainer.config.network.hidden_sizes}\n")
+                    f.write(f"\n--- Results ---\n")
+                    f.write(f"Best fitness (train): {trainer.best_fitness:.2f} BB/100\n")
+                    f.write(f"Best agent vs random: {baseline_score:.2f} BB/100\n")
+                    if hasattr(trainer, 'train_fitness_curve'):
+                        f.write(f"\nTrain fitness curve: {getattr(trainer, 'train_fitness_curve', [])}\n")
+                    if hasattr(trainer, 'eval_fitness_curve'):
+                        f.write(f"Eval fitness curve: {getattr(trainer, 'eval_fitness_curve', [])}\n")
+                    f.write(f"\nBest genome: {trainer.best_genome}\n")
+
+                    # --- Action Frequency and Scenario Analysis ---
+                    f.write("\n--- Action Frequency & Scenario Analysis ---\n")
+                    try:
+                        metrics = trainer.get_behavior_metrics(trainer.best_genome, num_hands=500, num_players=trainer.config.fitness.num_players)
+                        action_counts = metrics.get('action_counts', None)
+                        total_actions = int(action_counts.sum()) if action_counts is not None else 0
+                        if action_counts is not None and total_actions > 0:
+                            f.write("\nAction frequencies (across 500 simulated hands):\n")
+                            action_labels = ['fold', 'call/check', 'raise 0.5x', 'raise 1x', 'raise 2x', 'all-in']
+                            for i, count in enumerate(action_counts):
+                                freq = count / total_actions
+                                label = action_labels[i] if i < len(action_labels) else f'action_{i}'
+                                f.write(f"  {label:10s}: {count:4d} ({freq:.2%})\n")
+                            f.write("\nAggression factor: {:.2f}\n".format(metrics.get('aggression_factor', 0)))
+                            f.write("Showdown frequency: {:.2%}\n".format(metrics.get('showdown_freq', 0)))
+                            f.write("Showdown win rate: {:.2%}\n".format(metrics.get('showdown_win_rate', 0)))
+                            f.write("All-in frequency: {:.2%}\n".format(metrics.get('allin_freq', 0)))
+                            f.write("C-bet rate: {:.2%}\n".format(metrics.get('cbet_rate', 0)))
+                            f.write("Bluff rate: {:.2%}\n".format(metrics.get('bluff_rate', 0)))
+                            f.write("Fold to aggression rate: {:.2%}\n".format(metrics.get('fold_to_aggr_rate', 0)))
+                        else:
+                            f.write("\n[Could not compute action frequencies: insufficient data]\n")
+                    except Exception as e:
+                        f.write(f"\n[Error computing action frequencies: {e}]\n")
+                print(f"\nReport written to {report_path}")
+            except Exception as e:
+                print(f"[Warning] Could not write report.txt: {e}")
+            # --- End report.txt ---
+
         except KeyboardInterrupt:
             print("\n\nTraining interrupted. Saving checkpoint...")
             trainer.save_checkpoint()

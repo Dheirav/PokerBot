@@ -25,15 +25,18 @@ This module implements an evolutionary algorithm for training poker AI agents. N
 
 ```
 training/
-├── __init__.py          # Module exports
-├── config.py            # Configuration dataclasses
-├── genome.py            # Genome representation and factory
-├── policy_network.py    # Neural network policy
-├── fitness.py           # Fitness evaluation through self-play
-├── evolution.py         # Evolutionary algorithm
-├── self_play.py         # Self-play utilities
-└── README.md            # This file
+├── __init__.py              # Module exports
+├── config.py                # Configuration dataclasses
+├── genome.py                # Genome representation and factory (Numba-optimized)
+├── policy_network.py        # Neural network policy with forward pass
+├── policy_network_fast.py   # Legacy fast neural network (deprecated, use policy_network.py)
+├── fitness.py               # Fitness evaluation through self-play
+├── evolution.py             # Evolutionary algorithm orchestration
+├── self_play.py             # Self-play game utilities
+└── README.md                # This file
 ```
+
+**Note**: `policy_network_fast.py` is a legacy file kept for reference. All optimizations have been integrated into `policy_network.py` with Numba JIT compilation.
 
 ---
 
@@ -677,14 +680,75 @@ python scripts/test_ai_hands.py
 
 ---
 
+## Related Scripts
+
+**Training Scripts**:
+- **`scripts/train.py`**: Main evolutionary training (uses this entire module)
+- **`scripts/hyperparam_sweep.py`**: Quick hyperparameter search
+- **`scripts/deep_hyperparam_sweep.py`**: Comprehensive hyperparameter optimization
+
+**Analysis Scripts**:
+- **`scripts/plot_history.py`**: Visualize fitness curves and training progress
+- **`scripts/analyze_top_agents.py`**: Deep dive into elite agent performance
+- **`scripts/analyze_convergence.py`**: Detect convergence patterns
+- **`scripts/visualize_agent_behavior.py`**: Action distribution analysis
+
+**Evaluation Scripts**:
+- **`scripts/eval_baseline.py`**: Test trained agents vs baselines
+- **`scripts/match_agents.py`**: Head-to-head agent comparison
+- **`scripts/round_robin_agents_config.py`**: Tournament evaluation
+
+---
+
 ## Future Enhancements
 
-- [ ] Coevolution with opponent modeling
-- [ ] Novelty search for strategy diversity
-- [ ] CMA-ES as alternative to Gaussian mutation
-- [ ] Transfer learning from pre-trained networks
-- [ ] Multi-objective optimization (BB/100 + diversity)
-- [ ] Adaptive mutation rates per genome
+**Evolutionary Algorithm Improvements**:
+- [ ] **CMA-ES** (Covariance Matrix Adaptation): Better for high-dimensional search
+- [ ] **Novelty search**: Encourage diverse strategies, prevent convergence
+- [ ] **Multi-objective optimization**: Balance BB/100, diversity, robustness
+- [ ] **Adaptive mutation rates**: Per-genome learning rate adaptation
+- [ ] **Island model**: Multiple populations with migration
+
+**Training Strategy Improvements**:
+- [ ] **Coevolution with opponent modeling**: Agents learn counter-strategies
+- [ ] **Transfer learning**: Initialize from pre-trained networks
+- [ ] **Curriculum learning**: Gradually increase opponent difficulty
+- [ ] **Self-play with historical opponents**: Prevent strategy collapse
+- [ ] **Meta-learning**: Learn to adapt quickly to new opponents
+
+**Architecture Improvements**:
+- [ ] **LSTM/GRU**: Temporal game state modeling
+- [ ] **Attention mechanisms**: Focus on relevant game features
+- [ ] **Residual connections**: Enable deeper networks
+- [ ] **Ensemble models**: Combine multiple strategies
+
+**Infrastructure Improvements**:
+- [ ] **Distributed training**: Multi-machine parallelization
+- [ ] **Automatic hyperparameter tuning**: Optuna, Ray Tune integration
+- [ ] **Experiment tracking**: MLflow, Weights & Biases integration
+- [ ] **Model versioning**: Track and compare agent versions
+
+---
+
+## Performance Tuning Guide
+
+**For faster training**:
+1. Install Numba: `pip install numba` (2-3× speedup)
+2. Increase workers: `--workers 8` (linear speedup up to CPU count)
+3. Reduce hands: `--hands 2000` (faster but noisier fitness)
+4. Smaller population: `--pop 10` (less diversity but faster)
+
+**For better agents**:
+1. More generations: `--gens 200+` (more evolution time)
+2. Larger population: `--pop 40+` (more exploration)
+3. More hands: `--hands 5000+` (more accurate fitness)
+4. More matchups: `--matchups 20+` (diverse opponents)
+
+**For experimentation**:
+1. Save frequently: Automatic checkpointing every generation
+2. Resume capability: `--resume checkpoints/run_name`
+3. Multiple seeds: Run with different `--seed` values
+4. Hyperparameter sweeps: Use `deep_hyperparam_sweep.py`
 
 ---
 
