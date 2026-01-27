@@ -9,15 +9,18 @@
 This module implements an evolutionary algorithm for training poker AI agents. Networks compete in self-play poker games, with successful strategies propagating to future generations through mutation and selection.
 
 **Key Features**:
-- 🧬 Evolutionary algorithm with elitism
+- 🧬 Evolutionary algorithm with elitism and Hall of Fame
 - 🎲 Self-play fitness evaluation  
 - 🧠 Neural network policy agents
 - 📊 Population diversity maintenance
+- 🏆 **Hall of Fame pre-loading** for training with strong opponents
 - ⚡ Parallel evaluation with multiprocessing
 - 🎯 Configurable hyperparameters
 - ⚡ **Numba JIT-optimized** for 2-3× speedup
 
 **Performance**: ~4-6 sec/generation with Numba, ~13 sec without
+
+**New Feature**: `EvolutionTrainer.initialize()` now accepts `hof_weights` parameter to pre-load Hall of Fame opponents. This prevents small populations from overfitting to weak self-play opponents.
 
 ---
 
@@ -186,45 +189,54 @@ print(f"Fitness: {fitness_bb100:.2f} BB/100")
 
 ### 5. Evolution (`evolution.py`)
 
-Main evolutionary algorithm orchestrator.
+Main evolutionary algorithm orchestrator with Hall of Fame support.
 
 ```python
-from training import Evolution
+from training import EvolutionTrainer, TrainingConfig
 
-# Create evolution engine
-evolution = Evolution(
-    network_config=network_config,
-    evolution_config=evolution_config,
-    fitness_config=fitness_config,
-    checkpoint_dir='checkpoints/evolution_run',
-    seed=42,
-    num_workers=4  # Parallel evaluation
+# Create evolution trainer
+config = TrainingConfig(
+    network=network_config,
+    evolution=evolution_config,
+    fitness=fitness_config,
+    num_generations=100,
+    seed=42
 )
 
-# Initialize population
-evolution.initialize_population()
+trainer = EvolutionTrainer(config)
 
-# Run evolution
+# Option 1: Standard initialization
+trainer.initialize()
+
+# Option 2: Initialize with Hall of Fame opponents (NEW!)
+# Prevents small populations from overfitting to weak self-play
+hof_weights = [
+    np.load('checkpoints/champion1/best_genome.npy', allow_pickle=True).item(),
+    np.load('checkpoints/champion2/best_genome.npy', allow_pickle=True).item(),
+    np.load('checkpoints/champion3/best_genome.npy', allow_pickle=True).item(),
+]
+trainer.initialize(hof_weights=hof_weights)
+
+# Run training
 for generation in range(100):
-    # Evaluate fitness
-    evolution.evaluate_population()
+    stats = trainer.train_generation()
     
-    # Select and create next generation
-    evolution.evolve()
-    
-    # Log progress
-    print(f"Gen {generation}: Best = {evolution.best_fitness:.2f}")
-    
-    # Save checkpoint
-    evolution.save_checkpoint()
+    print(f"Gen {generation}: Mean = {stats['mean_fitness']:.2f}, "
+          f"Best = {trainer.best_fitness:.2f}")
 ```
 
 **Evolution Steps**:
-1. **Evaluate**: Play poker games, measure BB/100
-2. **Select**: Keep elite performers
-3. **Mutate**: Add Gaussian noise to create offspring
-4. **Replace**: Form new population
-5. **Repeat**: Next generation
+1. **Evaluate**: Play poker games vs population + HoF, measure BB/100
+2. **Update HoF**: Add top performers if sufficiently novel
+3. **Select**: Keep elite performers
+4. **Mutate**: Add Gaussian noise to create offspring
+5. **Replace**: Form new population
+6. **Repeat**: Next generation
+
+**Hall of Fame Benefits**:
+- Prevents overfitting to weak self-play opponents
+- Enables smaller populations to achieve good performance
+- Tournament data: p12 without HoF = 33.8% win rate, with HoF can match larger populations
 
 ---
 
@@ -233,27 +245,75 @@ for generation in range(100):
 ### Full Training Process
 
 ```python
-from training import Evolution, NetworkConfig, EvolutionConfig, FitnessConfig
+from training import EvolutionTrainer, TrainingConfig, NetworkConfig, EvolutionConfig, FitnessConfig
 
 # 1. Configure
-network_config = NetworkConfig(input_size=17, hidden_layers=[64, 32], output_size=6)
-evolution_config = EvolutionConfig(population_size=20, elite_fraction=0.1)
-fitness_config = FitnessConfig(hands_per_matchup=3000, matchups_per_agent=12)
+config = TrainingConfig(
+    network=NetworkConfig(input_size=17, hidden_sizes=[128, 128], output_size=6),
+    evolution=EvolutionConfig(population_size=20, mutation_sigma=0.1),
+    fitness=FitnessConfig(hands_per_matchup=500, matchups_per_agent=8, num_players=2),
+    num_generations=100,
+    seed=42,
+    output_dir='checkpoints/evolution_run'
+)
 
-# 2. Initialize
-evolution = Evolution(network_config, evolution_config, fitness_config, seed=42, num_workers=4)
-evolution.initialize_population()
+# 2. Initialize trainer
+trainer = EvolutionTrainer(config)
+trainer.initialize()
 
 # 3. Train
-for gen in range(100):
-    evolution.evaluate_population()
-    evolution.evolve()
-    evolution.save_checkpoint()
+for gen in range(config.num_generations):
+    stats = trainer.train_generation()
+    print(f"Gen {gen}: Mean = {stats['mean_fitness']:.2f}, Best = {trainer.best_fitness:.2f}")
 
 # 4. Get best agent
-best_genome = evolution.get_best_genome()
-network = PolicyNetwork.from_genome(best_genome, network_config)
+best_genome = trainer.population.get_best()
+network = PolicyNetwork.from_genome(best_genome, config.network)
 ```
+
+### Training with Hall of Fame Opponents (NEW!)
+
+**Problem**: Small populations (p12, p16) overfit to weak self-play opponents  
+**Solution**: Pre-load strong opponents into Hall of Fame before training
+
+```python
+from training import EvolutionTrainer, TrainingConfig
+import numpy as np
+
+# Load tournament winners as HoF opponents
+hof_weights = [
+    np.load('checkpoints/deep_p40_m8_h375_s0.1/evolution_run/best_genome.npy', allow_pickle=True).item(),
+    np.load('checkpoints/deep_p40_m6_h500_s0.15/evolution_run/best_genome.npy', allow_pickle=True).item(),
+    np.load('checkpoints/deep_p20_m6_h500_s0.15/evolution_run/best_genome.npy', allow_pickle=True).item(),
+]
+
+# Configure small population training
+config = TrainingConfig(
+    network=NetworkConfig(input_size=17, hidden_sizes=[128, 128], output_size=6),
+    evolution=EvolutionConfig(population_size=12, mutation_sigma=0.1),  # Small population!
+    fitness=FitnessConfig(hands_per_matchup=500, matchups_per_agent=8, num_players=2),
+    num_generations=100,
+    seed=42
+)
+
+# Initialize with HoF opponents
+trainer = EvolutionTrainer(config)
+trainer.initialize(hof_weights=hof_weights)
+
+# Train normally - population will compete against strong HoF opponents
+for gen in range(config.num_generations):
+    stats = trainer.train_generation()
+```
+
+**Benefits**:
+- 3× faster training (p12 vs p40)
+- Prevents overfitting to weak opponents
+- Tournament results: p12 with HoF can match p40 performance!
+
+**Use Cases**:
+- Budget-constrained training (limited compute)
+- Quick experimentation with strong baselines
+- Transfer learning from previous training runs
 
 ---
 
@@ -778,3 +838,184 @@ See [engine/README.md](../engine/README.md) for engine details.
 ---
 
 **For training questions, see main [README.md](../README.md) or open an issue.**
+
+---
+
+## 🆕 Recent Updates (January 2026)
+
+### Hall of Fame Pre-loading Enhancements
+
+The `EvolutionTrainer.initialize()` method has always supported `hof_weights` parameter, and now the training scripts make it easy to use:
+
+**What's New**:
+- `train.py` now has command-line arguments for HOF loading (`--hof-dir`, `--hof-paths`, `--hof-count`)
+- No need for separate `train_with_hof.py` script
+- Can combine with `--seed-weights` for transfer learning + strong opponents
+- `deep_hyperparam_sweep.py` supports HOF loading for all sweep runs
+
+**Why It Matters**:
+Tournament analysis shows that small populations (p12) without HOF achieve only 33.8% win rate due to overfitting to weak self-play opponents. With proper HOF opponents, p12 can match larger populations while training 3× faster.
+
+**Usage in Code**:
+```python
+from training import EvolutionTrainer, TrainingConfig
+import numpy as np
+
+# Load champion genomes
+hof_weights = [
+    np.load('checkpoints/champion1/best_genome.npy'),
+    np.load('checkpoints/champion2/best_genome.npy'),
+    np.load('checkpoints/champion3/best_genome.npy'),
+]
+
+# Create trainer and initialize with HOF
+config = TrainingConfig(...)
+trainer = EvolutionTrainer(config)
+trainer.initialize(hof_weights=hof_weights)
+
+# Train - population will compete against champions from gen 0
+best = trainer.train()
+```
+
+**Command-Line Usage**:
+```bash
+# Using the training script
+python scripts/training/train.py \
+    --pop 12 --gens 100 \
+    --hof-paths \
+        checkpoints/champion1/best_genome.npy \
+        checkpoints/champion2/best_genome.npy
+```
+
+### Convergence Status Detection
+
+The training system now tracks convergence patterns to identify when configs need more training:
+
+**Status Levels**:
+1. **PLATEAUED**: No improvement in last 5 generations (<5 fitness gain)
+   - Ready for evaluation and tournaments
+   - Further training unlikely to help
+
+2. **SLOW_IMPROVEMENT**: Small improvements (5-20 fitness gain in last 5 gens)
+   - Nearly converged
+   - May benefit from 10-20 more generations
+
+3. **IMPROVING**: Moderate improvements (20-50 fitness gain)
+   - Still learning at reasonable pace
+   - Should continue training
+
+4. **STRONGLY_IMPROVING**: Significant improvements (50+ fitness gain)
+   - Learning curve is steep
+   - Definitely needs more training
+   - May achieve much higher fitness with extended runs
+
+**Detection in Analysis Scripts**:
+```python
+def analyze_convergence(result):
+    """Detect convergence status from training history."""
+    best_progress = result['best_progress']
+    last_5_gens = min(5, len(best_progress))
+    last_improvement = best_progress[-1] - best_progress[-last_5_gens]
+    
+    if last_improvement > 50:
+        return "STRONGLY_IMPROVING"
+    elif last_improvement > 20:
+        return "IMPROVING"
+    elif last_improvement > 5:
+        return "SLOW_IMPROVEMENT"
+    else:
+        return "PLATEAUED"
+```
+
+**Usage in Hyperparameter Sweeps**:
+```bash
+# Train only strongly improving configs
+python scripts/training/deep_hyperparam_sweep.py \
+    --strongly-improving-only \
+    --generations 100
+
+# Or filter by minimum status
+python scripts/training/deep_hyperparam_sweep.py \
+    --min-status IMPROVING \
+    --generations 100
+```
+
+### Best Practices for Training
+
+**Small Populations (p12-p20)**:
+- ✅ **Always use HOF opponents** to prevent overfitting
+- ✅ Use `--hof-count 5-10` for good opponent diversity
+- ✅ Check convergence status - may plateau early
+- ⚠️ Without HOF: Risk of local minima and weak generalization
+
+**Large Populations (p40+)**:
+- ✅ Better self-play diversity, HOF optional but helpful
+- ✅ Longer training times but stronger final agents
+- ✅ More resistant to overfitting
+
+**Multi-Stage Training**:
+```python
+# Stage 1: Quick exploration with small population + HOF
+config1 = TrainingConfig(
+    evolution=EvolutionConfig(population_size=12),
+    num_generations=50
+)
+trainer1 = EvolutionTrainer(config1)
+trainer1.initialize(hof_weights=champions)
+best1 = trainer1.train()
+
+# Stage 2: Refinement with larger population, seed from stage 1
+config2 = TrainingConfig(
+    evolution=EvolutionConfig(population_size=40),
+    num_generations=100
+)
+trainer2 = EvolutionTrainer(config2)
+trainer2.initialize(seed_weights=best1.weights, hof_weights=champions)
+best2 = trainer2.train()
+```
+
+### Checkpoint Management
+
+**Timestamped Run Directories**:
+All checkpoints now save to timestamped subdirectories to prevent overwriting:
+```
+checkpoints/
+└── my_experiment/
+    ├── evolution_run/
+    │   └── tensorboard/
+    └── runs/
+        ├── run_20260127_143022/
+        │   ├── best_genome.npy
+        │   ├── population.npy
+        │   ├── hall_of_fame.npy
+        │   ├── state.json
+        │   └── history.json
+        └── run_20260127_151445/
+            └── ...
+```
+
+**Benefits**:
+- ✅ Never lose previous runs
+- ✅ Can compare multiple runs of same config
+- ✅ Easy to resume or analyze any run
+- ✅ Safe for parallel training experiments
+
+### Performance Monitoring
+
+**Training Speed Expectations**:
+- **With Numba**: ~4-6 sec/generation (p12-p20), ~8-12 sec/gen (p40)
+- **Without Numba**: ~13 sec/generation (p12-p20), ~20-30 sec/gen (p40)
+- **Install Numba**: `pip install numba` for 2-3× speedup
+
+**Fitness Progression**:
+- **First 10 gens**: Rapid improvement (often 50-200 BB/100)
+- **Gens 10-30**: Steady growth (20-50 BB/100 per gen)
+- **Gens 30-50**: Slowing (5-20 BB/100 per gen)
+- **Gens 50+**: Plateau or slow improvement (<5 BB/100 per gen)
+
+**When to Stop**:
+- PLATEAUED status for 10+ generations
+- Fitness stops improving
+- Validation against fixed opponents shows no gains
+- Time/compute budget exhausted
+

@@ -2,10 +2,21 @@
 """
 Analyze convergence patterns from hyperparameter sweep results.
 Identifies which configurations have plateaued vs still improving.
+
+Usage:
+    # Analyze latest sweep
+    python scripts/analysis/analyze_convergence.py
+    
+    # Analyze specific sweep directory
+    python scripts/analysis/analyze_convergence.py hyperparam_results/sweep_20260127_123456
+    
+    # Analyze specific results.json file
+    python scripts/analysis/analyze_convergence.py hyperparam_results/sweep_20260127_123456/results.json
 """
 
 import json
 import sys
+import argparse
 from pathlib import Path
 from typing import List, Dict, Tuple, TextIO
 
@@ -40,6 +51,7 @@ class TeeOutput:
 def analyze_convergence(result: Dict) -> Dict:
     """
     Analyze convergence pattern for a single configuration.
+    Dynamically adjusts analysis windows based on total generations.
     
     Returns dict with convergence metrics.
     """
@@ -48,25 +60,33 @@ def analyze_convergence(result: Dict) -> Dict:
     if n_gens == 0:
         raise ValueError(f"SKIP: {result.get('name', '<unnamed>')} has no best_progress data.")
 
-    # Calculate improvement in different phases
-    if n_gens >= 5:
-        early_improvement = best_progress[min(4, n_gens-1)] - best_progress[0]
+    # Calculate improvement in different phases (dynamically sized)
+    # Early: first 10% or 5 gens, whichever is larger
+    early_window = max(5, n_gens // 10)
+    if n_gens >= early_window:
+        early_improvement = best_progress[early_window - 1] - best_progress[0]
     else:
         early_improvement = 0
 
-    if n_gens >= 15:
-        mid_improvement = best_progress[min(14, n_gens-1)] - best_progress[10]
+    # Mid: middle 10% window
+    mid_start = n_gens // 2 - early_window // 2
+    mid_end = mid_start + early_window
+    if mid_end <= n_gens:
+        mid_improvement = best_progress[mid_end - 1] - best_progress[mid_start]
     else:
         mid_improvement = 0
 
-    if n_gens >= 20:
-        late_improvement = best_progress[min(19, n_gens-1)] - best_progress[15]
+    # Late: last 20% window
+    late_window = max(5, n_gens // 5)
+    late_start = n_gens - late_window
+    if late_start >= 0:
+        late_improvement = best_progress[-1] - best_progress[late_start]
     else:
         late_improvement = 0
 
-    # Check if still improving at end
-    last_5_gens = min(5, n_gens)
-    last_improvement = best_progress[-1] - best_progress[-last_5_gens]
+    # Check if still improving at end (last 10% or min 5 gens)
+    last_window = max(5, n_gens // 10)
+    last_improvement = best_progress[-1] - best_progress[-last_window]
 
     # Calculate improvement rate (fitness per generation)
     total_improvement = best_progress[-1] - best_progress[0]
@@ -75,16 +95,25 @@ def analyze_convergence(result: Dict) -> Dict:
     # Recent improvement rate (last 25% of generations)
     recent_start = max(0, n_gens - n_gens // 4)
     recent_improvement = best_progress[-1] - best_progress[recent_start]
-    recent_rate = recent_improvement / (n_gens - recent_start) if recent_start < n_gens else 0
+    recent_gens = n_gens - recent_start
+    recent_rate = recent_improvement / recent_gens if recent_gens > 0 else 0
 
-    # Determine convergence status
-    if last_improvement > 50:
+    # Determine convergence status (scaled by total generations)
+    # For longer runs, require proportionally more improvement to be "improving"
+    scale_factor = min(1.0, n_gens / 50.0)  # Scale thresholds for runs < 50 gens
+    
+    # Thresholds scale with generation count
+    strong_threshold = 50 * scale_factor
+    improving_threshold = 20 * scale_factor
+    slow_threshold = 5 * scale_factor
+    
+    if last_improvement > strong_threshold:
         status = "STRONGLY_IMPROVING"
         emoji = "🚀"
-    elif last_improvement > 20:
+    elif last_improvement > improving_threshold:
         status = "IMPROVING"
         emoji = "⚠️"
-    elif last_improvement > 5:
+    elif last_improvement > slow_threshold:
         status = "SLOW_IMPROVEMENT"
         emoji = "📊"
     else:
@@ -93,9 +122,14 @@ def analyze_convergence(result: Dict) -> Dict:
 
     return {
         'early_improvement': early_improvement,
+        'early_window': early_window,
         'mid_improvement': mid_improvement,
+        'mid_start': mid_start,
+        'mid_end': mid_end,
         'late_improvement': late_improvement,
+        'late_window': late_window,
         'last_improvement': last_improvement,
+        'last_window': last_window,
         'total_improvement': total_improvement,
         'avg_rate': avg_improvement_rate,
         'recent_rate': recent_rate,
@@ -157,27 +191,30 @@ def print_convergence_analysis(results: List[Dict], top_n: int = None):
     for i, a in enumerate(analyses[:display_count], 1):
         print(f"\n{i}. {a['emoji']} {a['name']} - {a['status']}")
         print(f"   Final Fitness: {a['final_fitness']:.1f}")
+        print(f"   Total Generations: {a['n_generations']}")
         print(f"   Configuration:")
         print(f"     pop={a['config']['population_size']}, "
               f"matchups={a['config']['matchups_per_agent']}, "
               f"hands={a['config']['hands_per_matchup']}, "
               f"sigma={a['config']['mutation_sigma']}")
         print(f"   Improvement Pattern:")
-        print(f"     Early (gen 0-4):   {a['early_improvement']:>8.1f}")
-        print(f"     Mid (gen 10-14):   {a['mid_improvement']:>8.1f}")
-        print(f"     Late (gen 15-19):  {a['late_improvement']:>8.1f}")
-        print(f"     Last 5 gens:       {a['last_improvement']:>8.1f}")
+        print(f"     Early (gen 0-{a['early_window']}):   {a['early_improvement']:>8.1f}")
+        print(f"     Mid (gen {a['mid_start']}-{a['mid_end']}):   {a['mid_improvement']:>8.1f}")
+        print(f"     Late (last {a['late_window']} gens):  {a['late_improvement']:>8.1f}")
+        print(f"     Last {a['last_window']} gens:       {a['last_improvement']:>8.1f}")
         print(f"   Improvement Rates:")
         print(f"     Average rate:      {a['avg_rate']:>8.2f} fitness/gen")
         print(f"     Recent rate:       {a['recent_rate']:>8.2f} fitness/gen")
         
-        # Provide recommendation
+        # Provide recommendation based on status
         if a['status'] in ['STRONGLY_IMPROVING', 'IMPROVING']:
-            print(f"   💡 RECOMMENDATION: Run longer! Could reach {a['final_fitness'] + a['last_improvement'] * 2:.0f}+ fitness")
+            extra_gens = max(50, a['n_generations'])
+            expected_gain = a['recent_rate'] * extra_gens
+            print(f"   💡 RECOMMENDATION: Train {extra_gens}+ more generations (expected gain: +{expected_gain:.1f})")
         elif a['status'] == 'SLOW_IMPROVEMENT':
-            print(f"   💡 RECOMMENDATION: May benefit from 10-20 more generations")
+            print(f"   💡 RECOMMENDATION: Train 20-30 more generations to confirm plateau")
         else:
-            print(f"   💡 RECOMMENDATION: Likely converged, baseline established")
+            print(f"   💡 RECOMMENDATION: Converged - ready for tournament evaluation")
     
     # Identify concerning patterns
     print("\n" + "=" * 100)
@@ -253,21 +290,57 @@ def compare_population_sizes(results: List[Dict]):
 
 
 def main():
+    parser = argparse.ArgumentParser(
+        description='Analyze convergence patterns from hyperparameter sweep results',
+        epilog="""Examples:
+  # Analyze latest sweep
+  python scripts/analysis/analyze_convergence.py
+  
+  # Analyze specific sweep directory
+  python scripts/analysis/analyze_convergence.py hyperparam_results/sweep_20260127_123456
+  
+  # Analyze specific results.json file
+  python scripts/analysis/analyze_convergence.py hyperparam_results/sweep_20260127_123456/results.json
+        """,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument('sweep_path', nargs='?', type=str,
+                       help='Path to sweep directory or results.json file (default: latest sweep)')
+    parser.add_argument('--top', type=int, default=10,
+                       help='Number of top configurations to display (default: 10)')
+    args = parser.parse_args()
+    
     # Find the most recent results file
     script_dir = Path(__file__).parent
-    hyperparam_dir = script_dir.parent / 'hyperparam_results'
+    project_root = script_dir.parent.parent
+    hyperparam_dir = project_root / 'hyperparam_results'
     
-    # Look for all sweep directories
-    sweep_dirs = sorted([d for d in hyperparam_dir.glob('sweep_*') if d.is_dir()], reverse=True)
-    
-    if not sweep_dirs:
-        print("No hyperparam sweep results found!")
-        sys.exit(1)
-    
-    # Use specified path or default to latest
-    if len(sys.argv) > 1:
-        json_path = Path(sys.argv[1])
+    if args.sweep_path:
+        # User specified a path
+        sweep_path = Path(args.sweep_path)
+        
+        # Handle relative paths
+        if not sweep_path.is_absolute():
+            sweep_path = project_root / sweep_path
+        
+        # Check if it's a directory or file
+        if sweep_path.is_dir():
+            json_path = sweep_path / 'results.json'
+        elif sweep_path.is_file() and sweep_path.name == 'results.json':
+            json_path = sweep_path
+        else:
+            print(f"Error: {sweep_path} is not a valid sweep directory or results.json file!")
+            sys.exit(1)
     else:
+        # Use latest sweep
+        sweep_dirs = sorted([d for d in hyperparam_dir.glob('sweep*') if d.is_dir()], 
+                          key=lambda x: x.stat().st_mtime, reverse=True)
+        
+        if not sweep_dirs:
+            print(f"No hyperparam sweep results found in {hyperparam_dir}!")
+            print("\nUsage: python scripts/analysis/analyze_convergence.py [sweep_directory]")
+            sys.exit(1)
+        
         latest_sweep = sweep_dirs[0]
         json_path = latest_sweep / 'results.json'
     
@@ -281,6 +354,7 @@ def main():
     # Redirect output to both console and file
     with TeeOutput(output_path):
         print(f"Loading results from: {json_path}")
+        print(f"Sweep directory: {json_path.parent}")
         
         with open(json_path, 'r') as f:
             results = json.load(f)
@@ -288,7 +362,7 @@ def main():
         print(f"Loaded {len(results)} configurations")
         
         # Perform analysis
-        print_convergence_analysis(results, top_n=10)
+        print_convergence_analysis(results, top_n=args.top)
         compare_population_sizes(results)
     
     # Print completion message to console only (not in file)

@@ -4,9 +4,17 @@ Hyperparameter sweep - finds optimal training config by testing combinations of
 population size, matchups, hands, and mutation sigma.
 
 Usage:
-    python scripts/hyperparam_sweep.py --quick       # Fast sweep (6 configs, 10 gens each)
-    python scripts/hyperparam_sweep.py               # Normal (12 configs, 15 gens)
-    python scripts/hyperparam_sweep.py --thorough    # Thorough (many configs, 20 gens)
+    # Use defaults
+    python scripts/training/hyperparam_sweep.py
+    
+    # Custom parameter grid
+    python scripts/training/hyperparam_sweep.py --pop 30 40 50 --matchups 8 10 12 --hands 300 375 450 --sigma 0.08 0.1 0.12
+    
+    # Quick test with single config
+    python scripts/training/hyperparam_sweep.py --pop 20 --matchups 6 --hands 500 --sigma 0.1 --gens 10
+    
+    # Explore around tournament winner (p40_m8_h375_s0.1)
+    python scripts/training/hyperparam_sweep.py --pop 30 40 50 --matchups 8 10 12 --hands 300 375 450 --sigma 0.08 0.1 0.12 --gens 50
 
 Analysis Tools:
     After running a sweep, analyze results with:
@@ -127,11 +135,38 @@ def run_exp(name, params, seed, out_dir):
     }
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--quick', action='store_true')
-    parser.add_argument('--thorough', action='store_true')
-    parser.add_argument('--output', default='hyperparam_results')
-    parser.add_argument('--seed', type=int, default=42)
+    parser = argparse.ArgumentParser(
+        description='Hyperparameter sweep for evolutionary poker AI training',
+        epilog="""Examples:
+  # Default broad sweep
+  python scripts/training/hyperparam_sweep.py
+  
+  # Explore tournament winner region
+  python scripts/training/hyperparam_sweep.py --pop 30 40 50 --matchups 8 10 12 --hands 300 375 450 --sigma 0.08 0.1 0.12
+  
+  # Quick single config test
+  python scripts/training/hyperparam_sweep.py --pop 20 --matchups 6 --hands 500 --sigma 0.1 --gens 10
+        """,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument('--pop', '--population', nargs='+', type=int,
+                       default=[16, 20, 30],
+                       help='Population sizes to test (default: 16 20 30)')
+    parser.add_argument('--matchups', nargs='+', type=int,
+                       default=[4, 6, 8],
+                       help='Matchups per agent to test (default: 4 6 8)')
+    parser.add_argument('--hands', nargs='+', type=int,
+                       default=[375, 500, 750],
+                       help='Hands per matchup to test (default: 375 500 750)')
+    parser.add_argument('--sigma', '--mutation', nargs='+', type=float,
+                       default=[0.1, 0.15],
+                       help='Mutation sigma values to test (default: 0.1 0.15)')
+    parser.add_argument('--gens', '--generations', type=int, default=15,
+                       help='Number of generations to train each config (default: 15)')
+    parser.add_argument('--output', default='hyperparam_results',
+                       help='Output directory (default: hyperparam_results)')
+    parser.add_argument('--seed', type=int, default=42,
+                       help='Random seed (default: 42)')
     args = parser.parse_args()
     
     print("="*70 + "\nHyperparameter Sweep\n" + "="*70)
@@ -139,13 +174,20 @@ def main():
     out_dir = Path(args.output) / f"sweep_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     out_dir.mkdir(parents=True, exist_ok=True)
     
-    mode = 'quick' if args.quick else ('thorough' if args.thorough else 'normal')
-    configs = create_configs(mode)
-    print(f"\nMode: {mode} | Testing {len(configs)} configs | Output: {out_dir}\n")
+    # Display parameter grid
+    print("\nParameter Grid:")
+    print(f"  Population sizes: {args.pop}")
+    print(f"  Matchups per agent: {args.matchups}")
+    print(f"  Hands per matchup: {args.hands}")
+    print(f"  Mutation sigma: {args.sigma}")
+    print(f"  Generations: {args.gens}")
+    
+    configs = create_configs(args.pop, args.matchups, args.hands, args.sigma, args.gens)
+    print(f"\nTesting {len(configs)} configurations | Output: {out_dir}\n")
     
     results = []
     for i, (name, params) in enumerate(configs, 1):
-        print(f"[{i}/{len(configs)}] {name}")
+        print(f\"\\n[{i}/{len(configs)}] {name}\")
         r = run_exp(name, params, args.seed, str(out_dir))
         if r:
             results.append(r)
@@ -194,11 +236,21 @@ def main():
           f"{best['total_hands_per_gen']:,} hands/gen, gap: {best['overfitting_gap']:.1f}")
     
     with open(out_dir / 'report.txt', 'w') as f:
-        f.write(f"SWEEP REPORT\n{'='*70}\nMode: {mode}\nConfigs: {len(results)}\n\n"
-                f"Recommended: {best['name']}\nPop: {best['config']['population_size']}\n"
-                f"Matchups: {best['config']['matchups_per_agent']}\nHands: {best['config']['hands_per_matchup']}\n"
-                f"Avg time: {best['avg_gen_time']:.1f}s\nBest fitness: {best['final_best_fitness']:.1f}\n"
-                f"Overfitting gap: {best['overfitting_gap']:.1f}\n")
+        f.write(f"SWEEP REPORT\n{'='*70}\n"
+                f"Population sizes: {args.pop}\n"
+                f"Matchups: {args.matchups}\n"
+                f"Hands: {args.hands}\n"
+                f"Sigma: {args.sigma}\n"
+                f"Generations: {args.gens}\n"
+                f"Total configs: {len(results)}\n\n"
+                f"RECOMMENDED: {best['name']}\n"
+                f"  Pop: {best['config']['population_size']}\n"
+                f"  Matchups: {best['config']['matchups_per_agent']}\n"
+                f"  Hands: {best['config']['hands_per_matchup']}\n"
+                f"  Sigma: {best['config']['mutation_sigma']}\n"
+                f"  Avg time: {best['avg_gen_time']:.1f}s\n"
+                f"  Best fitness: {best['final_best_fitness']:.1f}\n"
+                f"  Overfitting gap: {best['overfitting_gap']:.1f}\n")
     
     print(f"\n📊 Results: {out_dir}/results.json\n✅ Done!")
 

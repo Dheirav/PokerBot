@@ -213,12 +213,15 @@ class EvolutionTrainer:
             self.config.experiment_name
         )
     
-    def initialize(self, seed_weights: Optional[np.ndarray] = None):
+    def initialize(self, seed_weights: Optional[np.ndarray] = None, 
+                   hof_weights: Optional[List[np.ndarray]] = None):
         """
         Initialize population for training.
         
         Args:
             seed_weights: Optional weights to seed population
+            hof_weights: Optional list of weight arrays to pre-populate Hall of Fame
+                        (useful for evaluation against known strong agents)
         """
         seed_genome = None
         if seed_weights is not None:
@@ -262,6 +265,21 @@ class EvolutionTrainer:
                 print(f"Transformed genome: {info['percent_copied']:.1f}% weights copied, {info['total_params']-info['copied_params']} newly initialized.")
                 seed_genome = self.factory.create_from_weights(new_weights)
         self.population.initialize(seed_genome=seed_genome)
+        
+        # Pre-populate Hall of Fame with provided models
+        if hof_weights is not None and len(hof_weights) > 0:
+            print(f"Pre-populating Hall of Fame with {len(hof_weights)} models...")
+            for i, weights in enumerate(hof_weights):
+                try:
+                    hof_genome = self.factory.create_from_weights(weights)
+                    hof_genome.genome_id = -(i + 1)  # Negative IDs for pre-loaded models
+                    hof_genome.fitness = 999.0  # High fitness to keep them in HoF
+                    self.population.hall_of_fame.append(hof_genome)
+                    print(f"  Added HoF model {i+1}/{len(hof_weights)}")
+                except Exception as e:
+                    print(f"  Warning: Could not load HoF model {i+1}: {e}")
+            print(f"Hall of Fame initialized with {len(self.population.hall_of_fame)} models")
+        
         print(f"Initialized population with {len(self.population)} genomes")
         print(f"Genome size: {self.factory.genome_size} parameters")
         print(f"Network architecture: {self.factory._network.layer_sizes}")

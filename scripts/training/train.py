@@ -97,6 +97,15 @@ def parse_args():
     
     parser.add_argument('--seed-weights', type=str, default=None,
                         help='Path to .npy file with weights to seed initial population')
+    
+    # Hall of Fame pre-loading options
+    hof_group = parser.add_argument_group('Hall of Fame Pre-loading')
+    hof_group.add_argument('--hof-dir', type=str, default=None,
+                          help='Directory containing checkpoints to pre-load into Hall of Fame')
+    hof_group.add_argument('--hof-paths', nargs='+', default=None,
+                          help='Specific .npy files to pre-load into Hall of Fame')
+    hof_group.add_argument('--hof-count', type=int, default=5,
+                          help='Number of models to load from hof-dir (default: 5)')
     return parser.parse_args()
 
 
@@ -179,11 +188,73 @@ def main():
     else:
         print("\nInitializing new population...")
         seed_weights = None
+        hof_weights = None
+        
+        # Load seed weights if provided
         if args.seed_weights:
             import numpy as np
             print(f"Loading seed weights from {args.seed_weights}...")
             seed_weights = np.load(args.seed_weights)
-        trainer.initialize(seed_weights=seed_weights)
+        
+        # Load Hall of Fame weights if provided
+        if args.hof_dir or args.hof_paths:
+            import numpy as np
+            from pathlib import Path
+            hof_weights = []
+            
+            if args.hof_dir:
+                print(f"Loading Hall of Fame from directory: {args.hof_dir}")
+                hof_dir = Path(args.hof_dir)
+                
+                # Load best_genome.npy
+                best_path = hof_dir / 'best_genome.npy'
+                if best_path.exists():
+                    hof_weights.append(np.load(best_path))
+                    print(f"  Loaded best_genome.npy")
+                
+                # Load from population.npy
+                pop_path = hof_dir / 'population.npy'
+                if pop_path.exists() and len(hof_weights) < args.hof_count:
+                    population = np.load(pop_path)
+                    remaining = min(args.hof_count - len(hof_weights), len(population))
+                    for i in range(remaining):
+                        hof_weights.append(population[i])
+                    print(f"  Loaded {remaining} genomes from population.npy")
+                
+                # Load from hall_of_fame.npy
+                hof_path = hof_dir / 'hall_of_fame.npy'
+                if hof_path.exists() and len(hof_weights) < args.hof_count:
+                    hof = np.load(hof_path)
+                    remaining = min(args.hof_count - len(hof_weights), len(hof))
+                    for i in range(remaining):
+                        hof_weights.append(hof[i])
+                    print(f"  Loaded {remaining} genomes from hall_of_fame.npy")
+                    
+            elif args.hof_paths:
+                print(f"Loading Hall of Fame from {len(args.hof_paths)} paths")
+                for path_str in args.hof_paths:
+                    path = Path(path_str)
+                    if not path.exists():
+                        print(f"  Warning: {path} not found, skipping")
+                        continue
+                    try:
+                        loaded = np.load(path)
+                        if loaded.ndim == 2:  # Population/HOF file
+                            hof_weights.append(loaded[0])
+                            print(f"  Loaded {path} (took first genome)")
+                        else:
+                            hof_weights.append(loaded)
+                            print(f"  Loaded {path}")
+                    except Exception as e:
+                        print(f"  Warning: Could not load {path}: {e}")
+            
+            if hof_weights:
+                print(f"Successfully loaded {len(hof_weights)} Hall of Fame opponents")
+            else:
+                print("Warning: No Hall of Fame models loaded")
+                hof_weights = None
+        
+        trainer.initialize(seed_weights=seed_weights, hof_weights=hof_weights)
     
     # Print config summary
     print(f"\nConfiguration:")
@@ -191,6 +262,9 @@ def main():
     print(f"  Generations: {config.num_generations}")
     print(f"  Elite fraction: {config.evolution.elite_fraction}")
     print(f"  Mutation sigma: {config.evolution.mutation_sigma}")
+    print(f"  Hall of Fame size: {config.evolution.hof_size}")
+    if not args.resume and (args.hof_dir or args.hof_paths):
+        print(f"  Pre-loaded HOF opponents: {len(trainer.population.hall_of_fame)}")
     print(f"  Hands per matchup: {config.fitness.hands_per_matchup}")
     print(f"  Matchups per agent: {config.fitness.matchups_per_agent}")
     print(f"  Players per table: {config.fitness.num_players}")

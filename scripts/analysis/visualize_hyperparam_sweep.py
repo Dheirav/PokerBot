@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
 Visualize hyperparameter sweep results from JSON data.
+
+Usage:
+    python visualize_hyperparam_sweep.py                                    # Analyze latest sweep
+    python visualize_hyperparam_sweep.py hyperparam_results/sweep_XXX       # Analyze specific directory
+    python visualize_hyperparam_sweep.py hyperparam_results/sweep_XXX/results.json  # Analyze specific file
 """
 
 import json
@@ -8,6 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
 import seaborn as sns
+import argparse
 
 def load_results(json_path):
     """Load results from JSON file."""
@@ -22,8 +28,8 @@ def plot_final_metrics_comparison(results, output_dir):
     names = [r['name'] for r in results]
     metrics = {
         'Final Best Fitness': [r['final_best_fitness'] for r in results],
-        'Final Train Fitness': [r['final_train_fitness'] for r in results],
-        'Overfitting Gap': [r['overfitting_gap'] for r in results],
+        'Final Mean Fitness': [r.get('final_mean_fitness', r.get('final_train_fitness', 0)) for r in results],
+        'Overfitting Gap': [r.get('overfitting_gap', r['final_best_fitness'] - r.get('final_mean_fitness', r.get('final_train_fitness', 0))) for r in results],
         'Convergence': [r['convergence'] for r in results],
         'Efficiency': [r['efficiency'] for r in results],
         'Avg Gen Time (s)': [r['avg_gen_time'] for r in results],
@@ -190,7 +196,7 @@ def plot_hyperparameter_heatmaps(results, output_dir):
     
     # Overfitting analysis
     ax = axes[1, 1]
-    train_fit = [r['final_train_fitness'] for r in results]
+    train_fit = [r.get('final_mean_fitness', r.get('final_train_fitness', 0)) for r in results]
     best_fit = [r['final_best_fitness'] for r in results]
     
     scatter = ax.scatter(train_fit, best_fit, c=range(len(results)), 
@@ -315,10 +321,14 @@ def generate_summary_report(results, output_dir):
         report.append(f"     - Matchups Per Agent: {r['config']['matchups_per_agent']}")
         report.append(f"     - Hands Per Matchup: {r['config']['hands_per_matchup']}")
         report.append(f"     - Mutation Sigma: {r['config']['mutation_sigma']}")
+        if 'hof_opponent_count' in r:
+            report.append(f"     - HoF Opponents: {r['hof_opponent_count']}")
         report.append(f"   Results:")
         report.append(f"     - Final Best Fitness: {r['final_best_fitness']:.2f}")
-        report.append(f"     - Final Train Fitness: {r['final_train_fitness']:.2f}")
-        report.append(f"     - Overfitting Gap: {r['overfitting_gap']:.2f}")
+        mean_fitness = r.get('final_mean_fitness', r.get('final_train_fitness', 0))
+        report.append(f"     - Final Mean Fitness: {mean_fitness:.2f}")
+        overfitting_gap = r.get('overfitting_gap', r['final_best_fitness'] - mean_fitness)
+        report.append(f"     - Overfitting Gap: {overfitting_gap:.2f}")
         report.append(f"     - Convergence: {r['convergence']:.2f}")
         report.append(f"     - Efficiency: {r['efficiency']:.4f}")
         report.append(f"     - Avg Gen Time: {r['avg_gen_time']:.2f}s")
@@ -342,9 +352,10 @@ def generate_summary_report(results, output_dir):
     report.append(f"  Avg Gen Time: {fastest['avg_gen_time']:.2f}s")
     report.append(f"  Fitness: {fastest['final_best_fitness']:.2f}")
     
-    least_overfitting = min(results, key=lambda x: x['overfitting_gap'])
+    least_overfitting = min(results, key=lambda x: x.get('overfitting_gap', x['final_best_fitness'] - x.get('final_mean_fitness', x.get('final_train_fitness', 0))))
     report.append(f"\nLeast Overfitting: {least_overfitting['name']}")
-    report.append(f"  Overfitting Gap: {least_overfitting['overfitting_gap']:.2f}")
+    overfitting_gap = least_overfitting.get('overfitting_gap', least_overfitting['final_best_fitness'] - least_overfitting.get('final_mean_fitness', least_overfitting.get('final_train_fitness', 0)))
+    report.append(f"  Overfitting Gap: {overfitting_gap:.2f}")
     report.append(f"  Fitness: {least_overfitting['final_best_fitness']:.2f}")
     
     report.append("\n" + "=" * 80)
@@ -360,21 +371,56 @@ def generate_summary_report(results, output_dir):
     print(f"\nSaved: {output_dir / 'analysis_report.txt'}")
 
 def main():
-    # Find the most recent results file
-    hyperparam_dir = Path(__file__).parent.parent / 'hyperparam_results'
+    parser = argparse.ArgumentParser(
+        description='Visualize hyperparameter sweep results with plots and analysis.',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python visualize_hyperparam_sweep.py
+  python visualize_hyperparam_sweep.py hyperparam_results/sweep_20260127_133129
+  python visualize_hyperparam_sweep.py hyperparam_results/sweep_20260127_133129/results.json
+        """
+    )
+    parser.add_argument('sweep_path', nargs='?', type=str,
+                       help='Path to sweep directory or results.json file (default: latest sweep)')
     
-    # Look for all sweep directories
-    sweep_dirs = sorted([d for d in hyperparam_dir.glob('sweep_*') if d.is_dir()], reverse=True)
+    args = parser.parse_args()
     
-    if not sweep_dirs:
-        print("No hyperparam sweep results found!")
-        return
+    # Determine project root and hyperparam directory
+    project_root = Path(__file__).parent.parent.parent
+    hyperparam_dir = project_root / 'hyperparam_results'
     
-    latest_sweep = sweep_dirs[0]
-    json_path = latest_sweep / 'results.json'
+    # Resolve path to results.json
+    if args.sweep_path:
+        sweep_path = Path(args.sweep_path)
+        if not sweep_path.is_absolute():
+            sweep_path = project_root / sweep_path
+        
+        if sweep_path.is_dir():
+            json_path = sweep_path / 'results.json'
+            output_dir = sweep_path / 'visualizations'
+        elif sweep_path.name == 'results.json':
+            json_path = sweep_path
+            output_dir = sweep_path.parent / 'visualizations'
+        else:
+            print(f"Error: Invalid path - {sweep_path}")
+            print("Please provide a directory containing results.json or the results.json file itself.")
+            return
+    else:
+        # Auto-detect latest sweep
+        sweep_dirs = sorted([d for d in hyperparam_dir.glob('sweep*') if d.is_dir()], 
+                           key=lambda x: x.stat().st_mtime, reverse=True)
+        
+        if not sweep_dirs:
+            print("No hyperparam sweep results found!")
+            return
+        
+        latest_sweep = sweep_dirs[0]
+        json_path = latest_sweep / 'results.json'
+        output_dir = latest_sweep / 'visualizations'
     
     if not json_path.exists():
-        print(f"No results.json found in {latest_sweep}")
+        print(f"No results.json found at: {json_path}")
         return
     
     print(f"Loading results from: {json_path}")
@@ -382,7 +428,6 @@ def main():
     print(f"Loaded {len(results)} configurations")
     
     # Create output directory for plots
-    output_dir = latest_sweep / 'visualizations'
     output_dir.mkdir(exist_ok=True)
     print(f"\nGenerating visualizations in: {output_dir}\n")
     

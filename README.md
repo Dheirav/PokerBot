@@ -169,32 +169,98 @@ python scripts/train.py \
 **Output**: Trained agents saved to `checkpoints/evolution_run/`
 
 ### Hyperparameter Optimization
-Find optimal training parameters:
+Find optimal training parameters with three specialized sweep tools:
 
+#### Standard Sweep (Self-Play Evaluation)
 ```bash
-# Quick hyperparameter sweep
-python scripts/hyperparam_sweep.py \
-    --generations 20 \      # Test for 20 generations
-    --trials 10             # Try 10 configurations
+# Quick exploration with custom parameter grid
+python scripts/training/hyperparam_sweep.py \
+    --pop 16 20 30 \
+    --matchups 4 6 8 \
+    --hands 375 500 750 \
+    --sigma 0.1 0.15 \
+    --gens 30
 
-# Deep hyperparameter sweep (comprehensive search)
-python scripts/deep_hyperparam_sweep.py \
-    --generations 50 \      # Longer evaluation
-    --trials 20             # More configurations
+# Explore around tournament winner (p40_m8_h375_s0.1)
+python scripts/training/hyperparam_sweep.py \
+    --pop 30 40 50 \
+    --matchups 8 10 12 \
+    --hands 300 375 450 \
+    --sigma 0.08 0.1 0.12 \
+    --gens 50
+```
 
+#### Benchmark Sweep (Fair Comparison)
+**Use this when**: You need directly comparable fitness values across configs
+```bash
+# Evaluates each config against SAME fixed opponents (tournament winners)
+python scripts/training/hyperparam_sweep_with_benchmark.py \
+    --pop 12 20 30 40 \
+    --matchups 4 6 8 \
+    --hands 500 750 1000 \
+    --sigma 0.1 0.15 \
+    --gens 30 \
+    --benchmark-hands 500
+```
+
+**Key insight**: Standard sweep fitness values are NOT comparable because each config trains against different self-play opponents. Benchmark sweep solves this!
+
+#### HoF Sweep (Small Population Optimization)
+**Use this when**: Training small populations that overfit to weak self-play
+```bash
+# P12 sweep with top tournament winners as HoF opponents
+python scripts/training/hyperparam_sweep_with_hof.py \
+    --pop 12 \
+    --matchups 6 8 10 \
+    --hands 375 500 750 \
+    --sigma 0.08 0.1 0.12 \
+    --tournament-winners \
+    --gens 50
+
+# Or specify custom HoF opponents
+python scripts/training/hyperparam_sweep_with_hof.py \
+    --pop 12 \
+    --matchups 8 \
+    --hands 500 \
+    --sigma 0.1 \
+    --hof-dir checkpoints/deep_p40_m6_h500_s0.15/evolution_run \
+    --gens 50
+```
+
+**Tournament insight**: p12 without HoF = 33.8% win rate, but with strong HoF opponents can match larger populations!
+
+#### Deep Sweep (Extended Training)
+**Use this when**: You've identified promising configs and need longer evaluation
+```bash
+# Extend top 5 configs from latest sweep to 100 generations
+python scripts/training/deep_hyperparam_sweep.py \
+    --top 5 \
+    --generations 100
+
+# Or run custom grid with extended training
+python scripts/training/deep_hyperparam_sweep.py \
+    --pop 40 \
+    --matchups 8 \
+    --hands 375 \
+    --sigma 0.1 \
+    --generations 200
+```
+
+#### Analysis Tools
+```bash
 # Analyze convergence patterns (detects if configs need longer training)
-python scripts/analyze_convergence.py
+python scripts/analysis/analyze_convergence.py
 
 # Generate comprehensive report
-python scripts/report_deep_sweep.py
+python scripts/analysis/report_deep_sweep.py
 
 # Visualize results (requires matplotlib, seaborn)
-python scripts/visualize_hyperparam_sweep.py
+python scripts/analysis/visualize_hyperparam_sweep.py
 ```
 
 **Output**: 
-- Raw results in `hyperparam_results/sweep_YYYYMMDD_HHMMSS/results.json`
-- Deep sweep report in `deep_sweep_report.txt`
+- Raw results in `hyperparam_results/sweep_*_YYYYMMDD_HHMMSS/results.json`
+- Summary reports in `report.txt`
 - Convergence analysis in `convergence_analysis.txt`
 - Visualizations in `visualizations/` folder (comparison plots, heatmaps, etc.)
 
@@ -203,35 +269,76 @@ Pit trained agents against each other to find the best performer:
 
 ```bash
 # Basic round-robin (all agents vs all agents)
-python scripts/round_robin_agents.py
+python scripts/evaluation/round_robin_agents.py
 
 # Enhanced round-robin with config insights and visualizations
-python scripts/round_robin_agents_config.py
+python scripts/evaluation/round_robin_agents_config.py
 ```
 
 **Output**:
 - Timestamped reports in `tournament_reports/tournament_YYYYMMDD_HHMMSS/`
-- JSON report with detailed matchup results
+- `report.json` with detailed matchup results
 - Visualizations: win/loss charts, parameter performance, head-to-head heatmaps, chip distribution
+- Aggregate analysis across all tournaments in `tournament_reports/tournament_results_analysis.txt`
 
 **Features**:
 - Sorted leaderboard by wins/losses
 - Per-agent breakdown of who they beat/lost to
-- Parameter insights (which population sizes, mutation sigmas, etc. perform best)
+- Parameter insights (which population sizes, matchups, hands, sigmas perform best)
 - Automatic visualization generation
+- Aggregated statistics across multiple tournaments
+
+**Key Findings** (from 6 tournament analysis):
+- **Best overall**: p40_m8_h375_s0.1 (75.5% aggregate win rate)
+- **Latest winner**: p40_m6_h500_s0.15_g200 (83.3% win rate)
+- **Matchups matter more than hands**: m8 > m6 >> m3, h375 optimal
+- **Small populations overfit**: p12 = 33.8% win rate without HoF opponents
 
 ### Agent Evaluation
 Test agent performance:
 
 ```bash
 # Against random agents
-python scripts/eval_baseline.py genome.pkl --hands 10000
+python scripts/evaluation/eval_baseline.py checkpoints/evolution_run/best_genome.npy --hands 10000
 
 # Head-to-head matches
-python scripts/match_agents.py genome1.pkl genome2.pkl --hands 5000
+python scripts/evaluation/match_agents.py \
+    --agent1 genome1.npy --arch1 "17 128 128 6" \
+    --agent2 genome2.npy --arch2 "17 128 128 6" \
+    --hands 10000
 
 # Visualize behavior
-python scripts/visualize_agent_behavior.py genome.pkl
+python scripts/analysis/visualize_agent_behavior.py checkpoints/evolution_run/best_genome.npy
+```
+
+### Training with HoF Opponents
+Prevent small populations from overfitting:
+
+```bash
+# Train p12 with HoF opponents from a checkpoint
+python scripts/training/train.py \
+    --pop 12 \
+    --matchups 8 \
+    --hands 500 \
+    --sigma 0.1 \
+    --hof-dir checkpoints/deep_p40_m6_h500_s0.15/evolution_run \
+    --hof-count 5 \
+    --gens 100
+
+# Or specify specific HoF opponents
+python scripts/training/train.py \
+    --pop 12 \
+    --matchups 8 \
+    --hands 500 \
+    --sigma 0.1 \
+    --hof-paths \
+        checkpoints/champion1/best_genome.npy \
+        checkpoints/champion2/best_genome.npy \
+        checkpoints/champion3/best_genome.npy \
+    --gens 100
+```
+
+**Why this matters**: Tournament results show p12 without HoF achieves only 33.8% win rate, but with strong HoF opponents can match larger populations while training 3× faster!
 ```
 
 ### Analysis & Visualization
@@ -793,3 +900,51 @@ MIT License - see [LICENSE](LICENSE) file for details
 ---
 
 **Built with ❤️ and lots of optimization**
+
+---
+
+## 🆕 Recent Updates (January 2026)
+
+### Enhanced Training Capabilities
+
+**Unified Training Script with Hall of Fame Support**
+- `train.py` now includes integrated HOF pre-loading (no need for separate `train_with_hof.py`)
+- New flags: `--hof-dir`, `--hof-paths`, `--hof-count`
+- Combine with `--seed-weights` for advanced transfer learning + strong opponents
+
+**Advanced Hyperparameter Sweep Features**
+- `deep_hyperparam_sweep.py` enhancements:
+  - `--sweep-dir`: Specify which sweep results to use
+  - `--strongly-improving-only`: Auto-filter configs still learning
+  - Multiple generation counts: `--generations 50 200` trains both
+  - Optional `--top`: Trains ALL matching configs if not specified
+  - Integrated HOF support: `--hof-dir` and `--hof-paths` for all runs
+- Better convergence analysis with STRONGLY_IMPROVING status detection
+
+**Examples**:
+```bash
+# Train with tournament winners as HOF opponents
+python scripts/training/train.py --pop 12 --matchups 8 --hands 500 --sigma 0.1 --gens 100 \
+  --hof-paths checkpoints/champion1/best_genome.npy checkpoints/champion2/best_genome.npy
+
+# Deep sweep with multiple generation counts and HOF
+python scripts/training/deep_hyperparam_sweep.py \
+  --sweep-dir sweep_hof_20260127_133129 \
+  --strongly-improving-only \
+  --top 3 \
+  --generations 50 200 \
+  --hof-paths checkpoints/champion1/best_genome.npy checkpoints/champion2/best_genome.npy
+
+# Train all strongly improving configs from latest sweep
+python scripts/training/deep_hyperparam_sweep.py \
+  --strongly-improving-only \
+  --generations 100
+```
+
+**Key Benefits**:
+- 🎯 **Stronger Training**: HOF opponents prevent overfitting to weak self-play
+- 📊 **Better Analysis**: STRONGLY_IMPROVING detection finds configs that need more training
+- ⚡ **Efficient Exploration**: Multi-generation training in single command
+- 🔧 **Flexible Control**: Specify exact sweep directory instead of always using latest
+
+See [scripts/README.md](scripts/README.md) for complete documentation.
