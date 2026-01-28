@@ -2,9 +2,9 @@
 Script to pit two trained evolutionary agents against each other and compare performance.
 
 Usage:
-    python scripts/match_agents.py --agent1 checkpoints/runs/SessionA/best_genome.npy --arch1 17 64 32 6 \
-                                   --agent2 checkpoints/runs/SessionB/best_genome.npy --arch2 17 128 64 6 \
-                                   --hands 5000 --players 2
+    python scripts/evaluation/match_agents.py --agent1 checkpoints/runs/SessionA/best_genome.npy --arch1 17 64 32 6 \
+                                              --agent2 checkpoints/runs/SessionB/best_genome.npy --arch2 17 128 64 6 \
+                                              --hands 5000 --players 2
 
 - Automatically transforms genomes if architectures differ.
 - Runs a head-to-head match and reports win rates and chip gains.
@@ -12,7 +12,9 @@ Usage:
 
 import sys
 import os
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Add project root to path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+
 import argparse
 import numpy as np
 from utils import genome_transform
@@ -20,8 +22,6 @@ from training.policy_network import PolicyNetwork
 from engine.game import PokerGame
 
 # Helper to parse architecture string
-
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 def parse_arch(arch_str):
     return [int(x) for x in arch_str.split()]

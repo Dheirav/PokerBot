@@ -1,12 +1,30 @@
 """
 Enhanced round-robin tournament: sorts by wins, includes config insights, and prints per-agent configuration.
 Uses descriptive names based on genome specifications instead of run names.
+
+Usage:
+    # Run all checkpoints
+    python3 scripts/evaluation/round_robin_agents_config.py
+    
+    # Run specific checkpoint directories
+    python3 scripts/evaluation/round_robin_agents_config.py --checkpoints deep_p12_m6_h375_s0.1_hof3_g50 deep_p20_m6_h500_s0.15_hof3_g50
+    
+    # Run checkpoints matching a pattern
+    python3 scripts/evaluation/round_robin_agents_config.py --pattern "*hof3*"
+    
+    # Run specific agent files
+    python3 scripts/evaluation/round_robin_agents_config.py --agents checkpoints/deep_p12_m6_h375_s0.1_hof3_g50/runs/run_20260128_032747/best_genome.npy
+    
+    # Customize settings
+    python3 scripts/evaluation/round_robin_agents_config.py --hands 5000 --checkpoints deep_p12_* deep_p20_*
 """
 import os
+import sys
 import subprocess
 import glob
 import re
 import json
+import argparse
 import collections
 from collections import defaultdict
 from datetime import datetime
@@ -16,9 +34,9 @@ matplotlib.use('Agg')  # Non-interactive backend
 import numpy as np
 
 ARCH = "17 64 32 6"
-HANDS = 10000
-PLAYERS = 2
-MATCH_SCRIPT = "scripts/match_agents.py"
+DEFAULT_HANDS = 10000
+DEFAULT_PLAYERS = 2
+MATCH_SCRIPT = "scripts/evaluation/match_agents.py"
 
 # Generate descriptive name from config
 def get_descriptive_name(config, original_name):
@@ -44,13 +62,67 @@ def get_descriptive_name(config, original_name):
         return original_name
 
 # Find all agents and configs
-def get_agents_and_configs():
-    agent_files = glob.glob("checkpoints/*/runs/*/best_genome.npy")
+def get_agents_and_configs(checkpoint_dirs=None, checkpoint_pattern=None, agent_paths=None):
+    """
+    Find agents to include in tournament.
+    
+    Args:
+        checkpoint_dirs: List of checkpoint directory names (e.g., ['deep_p12_m6_h375_s0.1_hof3_g50'])
+        checkpoint_pattern: Glob pattern for checkpoint directories (e.g., '*hof3*')
+        agent_paths: List of specific agent file paths
+    """
+    agent_files = []
+    
+    if agent_paths:
+        # Use specific agent files provided
+        agent_files = agent_paths
+    elif checkpoint_dirs:
+        # Use specific checkpoint directories
+        for ckpt_dir in checkpoint_dirs:
+            # Handle both with and without 'checkpoints/' prefix
+            if not ckpt_dir.startswith('checkpoints/'):
+                ckpt_dir = f'checkpoints/{ckpt_dir}'
+            
+            # Find all best_genome.npy files in this checkpoint
+            pattern = f"{ckpt_dir}/runs/*/best_genome.npy"
+            found = glob.glob(pattern)
+            if not found:
+                # Try without runs/ subdirectory
+                pattern = f"{ckpt_dir}/best_genome.npy"
+                found = glob.glob(pattern)
+            
+            if found:
+                agent_files.extend(found)
+                print(f"Found {len(found)} agent(s) in {ckpt_dir}")
+            else:
+                print(f"Warning: No agents found in {ckpt_dir}")
+    elif checkpoint_pattern:
+        # Use pattern matching for checkpoint directories
+        pattern = f"checkpoints/{checkpoint_pattern}/runs/*/best_genome.npy"
+        agent_files = glob.glob(pattern)
+        if not agent_files:
+            # Try without runs/ subdirectory
+            pattern = f"checkpoints/{checkpoint_pattern}/best_genome.npy"
+            agent_files = glob.glob(pattern)
+        print(f"Found {len(agent_files)} agent(s) matching pattern '{checkpoint_pattern}'")
+    else:
+        # Default: find all agents
+        agent_files = glob.glob("checkpoints/*/runs/*/best_genome.npy")
+        print(f"Found {len(agent_files)} agent(s) in all checkpoints")
+    
+    if not agent_files:
+        print("ERROR: No agents found!")
+        sys.exit(1)
+    
     agents = []
     seen_names = {}  # Track duplicate names
     
     for f in agent_files:
         original_name = re.sub(r"checkpoints/(.*)/runs/(.*)/best_genome.npy", r"\1/\2", f)
+        # Handle case without runs/ subdirectory
+        if 'runs/' not in f:
+            original_name = re.sub(r"checkpoints/(.*)/best_genome.npy", r"\1", f)
+        
         config_path = os.path.join(os.path.dirname(f), "config.json")
         
         if os.path.exists(config_path):
@@ -78,46 +150,55 @@ def get_agents_and_configs():
     
     return agents
 
-agents = get_agents_and_configs()
-results = defaultdict(lambda: {'wins': 0, 'losses': 0, 'chips': 0, 'matchups': {}})
-
-for i, agent1 in enumerate(agents):
-    for j, agent2 in enumerate(agents):
-        if i == j:
-            continue
-        name1 = agent1['name']
-        name2 = agent2['name']
-        print(f"\n=== {name1} vs {name2} ===")
-        cmd = [
-            "python3", MATCH_SCRIPT,
-            "--agent1", agent1['file'],
-            "--arch1", ARCH,
-            "--agent2", agent2['file'],
-            "--arch2", ARCH,
-            "--hands", str(HANDS),
-            "--players", str(PLAYERS)
-        ]
-        proc = subprocess.run(cmd, capture_output=True, text=True)
-        output = proc.stdout
-        if proc.returncode != 0:
-            print(f"Error running match: {name1} vs {name2}")
-            print(proc.stderr)
-        m = re.search(r"Final stacks: Agent 1: (\d+), Agent 2: (\d+)", output)
-        if m:
-            chips1 = int(m.group(1))
-            chips2 = int(m.group(2))
-            results[name1]['chips'] += chips1
-            results[name2]['chips'] += chips2
-            results[name1]['matchups'][name2] = chips1
-            results[name2]['matchups'][name1] = chips2
-            if chips1 > chips2:
-                results[name1]['wins'] += 1
-                results[name2]['losses'] += 1
-            elif chips2 > chips1:
-                results[name2]['wins'] += 1
-                results[name1]['losses'] += 1
-        else:
-            print("Could not parse result for", name1, "vs", name2)
+def run_tournament(agents, hands, players):
+    """Run the round-robin tournament between all agents."""
+    results = defaultdict(lambda: {'wins': 0, 'losses': 0, 'chips': 0, 'matchups': {}})
+    
+    total_matches = len(agents) * (len(agents) - 1)
+    match_count = 0
+    
+    for i, agent1 in enumerate(agents):
+        for j, agent2 in enumerate(agents):
+            if i == j:
+                continue
+            
+            match_count += 1
+            name1 = agent1['name']
+            name2 = agent2['name']
+            print(f"\n[{match_count}/{total_matches}] === {name1} vs {name2} ===")
+            
+            cmd = [
+                "python3", MATCH_SCRIPT,
+                "--agent1", agent1['file'],
+                "--arch1", ARCH,
+                "--agent2", agent2['file'],
+                "--arch2", ARCH,
+                "--hands", str(hands),
+                "--players", str(players)
+            ]
+            proc = subprocess.run(cmd, capture_output=True, text=True)
+            output = proc.stdout
+            if proc.returncode != 0:
+                print(f"Error running match: {name1} vs {name2}")
+                print(proc.stderr)
+            m = re.search(r"Final stacks: Agent 1: (\d+), Agent 2: (\d+)", output)
+            if m:
+                chips1 = int(m.group(1))
+                chips2 = int(m.group(2))
+                results[name1]['chips'] += chips1
+                results[name2]['chips'] += chips2
+                results[name1]['matchups'][name2] = chips1
+                results[name2]['matchups'][name1] = chips2
+                if chips1 > chips2:
+                    results[name1]['wins'] += 1
+                    results[name2]['losses'] += 1
+                elif chips2 > chips1:
+                    results[name2]['wins'] += 1
+                    results[name1]['losses'] += 1
+            else:
+                print("Could not parse result for", name1, "vs", name2)
+    
+    return results
 
 def analyze_and_report(agents, results, output_dir=None):
     # Create output directory with timestamp
@@ -344,4 +425,81 @@ def create_visualizations(sorted_agents, results, report, output_dir):
     plt.savefig(os.path.join(output_dir, 'chip_distribution.png'), dpi=150)
     plt.close()
 
-analyze_and_report(agents, results)
+def main():
+    parser = argparse.ArgumentParser(
+        description='Run round-robin tournament between poker agents',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Run all checkpoints
+  python3 scripts/evaluation/round_robin_agents_config.py
+  
+  # Run specific checkpoints
+  python3 scripts/evaluation/round_robin_agents_config.py --checkpoints deep_p12_m6_h375_s0.1_hof3_g50 deep_p20_m6_h500_s0.15_hof3_g50
+  
+  # Run checkpoints matching pattern
+  python3 scripts/evaluation/round_robin_agents_config.py --pattern "*hof3_g50"
+  
+  # Run specific agent files
+  python3 scripts/evaluation/round_robin_agents_config.py --agents checkpoints/deep_p12_*/runs/*/best_genome.npy
+  
+  # Customize settings
+  python3 scripts/evaluation/round_robin_agents_config.py --hands 5000 --checkpoints deep_p12_* deep_p20_*
+        """
+    )
+    
+    # Selection arguments
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument('--checkpoints', nargs='+', metavar='DIR',
+                          help='Specific checkpoint directory names (e.g., deep_p12_m6_h375_s0.1_hof3_g50)')
+    selection.add_argument('--pattern', type=str, metavar='PATTERN',
+                          help='Glob pattern for checkpoint directories (e.g., "*hof3*")')
+    selection.add_argument('--agents', nargs='+', metavar='PATH',
+                          help='Specific agent file paths')
+    
+    # Tournament settings
+    parser.add_argument('--hands', type=int, default=DEFAULT_HANDS,
+                       help=f'Hands per matchup (default: {DEFAULT_HANDS})')
+    parser.add_argument('--players', type=int, default=DEFAULT_PLAYERS,
+                       help=f'Players per table (default: {DEFAULT_PLAYERS})')
+    parser.add_argument('--output', type=str, default=None,
+                       help='Output directory (default: tournament_reports/tournament_<timestamp>)')
+    
+    args = parser.parse_args()
+    
+    print("=" * 80)
+    print("POKER AI ROUND-ROBIN TOURNAMENT")
+    print("=" * 80)
+    print(f"Hands per matchup: {args.hands}")
+    print(f"Players per table: {args.players}")
+    print()
+    
+    # Get agents based on selection criteria
+    agents = get_agents_and_configs(
+        checkpoint_dirs=args.checkpoints,
+        checkpoint_pattern=args.pattern,
+        agent_paths=args.agents
+    )
+    
+    print(f"\nTournament participants: {len(agents)} agents")
+    for i, agent in enumerate(agents, 1):
+        print(f"  {i}. {agent['name']}")
+    print()
+    
+    if len(agents) < 2:
+        print("ERROR: Need at least 2 agents for a tournament!")
+        sys.exit(1)
+    
+    # Run tournament
+    results = run_tournament(agents, args.hands, args.players)
+    
+    # Analyze and report
+    analyze_and_report(agents, results, output_dir=args.output)
+    
+    print("\n" + "=" * 80)
+    print("Tournament complete!")
+    print("=" * 80)
+
+if __name__ == '__main__':
+    main()
+

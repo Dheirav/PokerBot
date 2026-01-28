@@ -18,7 +18,9 @@
 | [deep_hyperparam_sweep.py](#deep_hyperparam_sweeppy) | Extended training | Deep dive into best configs |
 | [plot_history.py](#plot_historypy) | Training visualization | See fitness curves and progress |
 | [analyze_top_agents.py](#analyze_top_agentspy) | Agent analysis | Deep dive into agent performance |
+| [analyze_tournament_history.py](#analyze_tournament_historypy) | Tournament analysis | Analyze multiple tournament results |
 | [visualize_agent_behavior.py](#visualize_agent_behaviorpy) | Behavior analysis | Understand agent decision patterns |
+| [visualize_hyperparameter_relationships.py](#visualize_hyperparameter_relationshipspy) | Relationship visualization | Generate hyperparameter relationship diagrams |
 | [cleanup_checkpoints.py](#cleanup_checkpointspy) | Disk management | Free up storage space |
 
 ---
@@ -565,6 +567,66 @@ python scripts/analyze_convergence.py --sweep-dir hyperparam_results/sweep_20260
 
 ---
 
+### analyze_tournament_history.py
+
+**Purpose**: Comprehensive analysis of multiple tournament results to identify patterns and trends
+
+**When to Use**:
+- After running multiple tournament rounds (Batch 1, Batch 2, etc.)
+- Need cumulative statistics across all tournaments
+- Want to identify consistently strong performers
+- Need hyperparameter correlation analysis with visual charts
+- Comparing head-to-head matchup statistics
+
+**What it Analyzes**:
+- Cumulative win rates across all tournaments
+- Agent consistency (chip variance)
+- Hyperparameter performance patterns
+- Head-to-head matchup matrices
+- Development recommendations
+
+**Usage**:
+```bash
+# Analyze all tournaments (default)
+python scripts/analysis/analyze_tournament_history.py
+
+# Only include agents that played in 3+ tournaments
+python scripts/analysis/analyze_tournament_history.py --min-tournaments 3
+
+# Show top 15 agents instead of default 10
+python scripts/analysis/analyze_tournament_history.py --top-n 15
+
+# Both filters combined
+python scripts/analysis/analyze_tournament_history.py --min-tournaments 5 --top-n 20
+```
+
+**Requirements**:
+- Tournament reports in `tournament_reports/*/tournament_*/report.json`
+- Optional: `matplotlib`, `numpy` for visualizations
+
+**Output**:
+- `tournament_reports/overall_reports/[Batch]_Report/`
+  - `analysis_report.txt` - Comprehensive text report
+  - `analysis_report.json` - Machine-readable data
+  - `head_to_head_analysis.txt` - Matchup statistics
+- Console summary with ranked agents
+
+**Generated Report Sections**:
+1. **Agent Rankings**: Win rates, chip earnings, consistency metrics
+2. **Hyperparameter Correlations**: Which parameters correlate with success
+3. **Development Recommendations**: Best performers, configs to retire
+4. **Head-to-Head Analysis**: Detailed matchup statistics
+
+**Visualizations** (if matplotlib available):
+- Win rate distribution charts
+- Hyperparameter performance heatmaps
+- Agent consistency plots
+- Head-to-head matchup matrices
+
+**Time**: 5-30 seconds depending on number of tournaments
+
+---
+
 ### visualize_agent_behavior.py
 
 **Purpose**: Understand agent decision-making patterns
@@ -621,6 +683,49 @@ python scripts/visualize_hyperparam_sweep.py --sweep-dir hyperparam_results/swee
   - Parameter heatmaps
   - Learning curves
   - Best configuration highlights
+
+---
+
+### visualize_hyperparameter_relationships.py
+
+**Purpose**: Generate publication-quality visualizations showing empirical hyperparameter relationships
+
+**When to Use**:
+- After completing multiple tournament rounds
+- Need to understand proven design rules
+- Presenting research findings
+- Designing new configurations based on data
+
+**What it Shows**:
+1. **Population ↔ Matchups**: How population size affects optimal matchup count
+2. **Matchups ↔ Hands**: Tradeoff between variety and depth in fitness evaluation
+3. **Population ↔ Sigma**: Inverse relationship between diversity and mutation rate
+4. **Comprehensive Overview**: Box plots, scatter plots, and top config rankings
+
+**Usage**:
+```bash
+# Generate all relationship visualizations
+python scripts/analysis/visualize_hyperparameter_relationships.py
+```
+
+**Requirements**:
+- `matplotlib`, `seaborn` installed
+- Tournament data from Batch 1 & 2 (built-in)
+
+**Output** (saved to `tournament_reports/hyperparameter_analysis/`):
+- `relationship_1_population_vs_matchups.png` - Ratio analysis and optimal zones
+- `relationship_2_matchups_vs_hands.png` - Total evaluations sweet spot
+- `relationship_3_population_vs_sigma.png` - Empirical formula: σ ≈ 0.5/√pop
+- `comprehensive_overview.png` - All relationships and top configurations
+
+**Key Findings Visualized**:
+- Large populations (p40+) use 15-25% matchup ratio
+- Small populations (p12) need 50-67% matchup ratio
+- Optimal total evaluations: 3,000-4,500 (matchups × hands)
+- More matchups better than more hands per matchup
+- Sigma decreases as population increases
+
+**See Also**: [HYPERPARAMETER_RELATIONSHIPS.md](../HYPERPARAMETER_RELATIONSHIPS.md) for detailed analysis
 
 ---
 
@@ -835,6 +940,7 @@ python scripts/round_robin_agents_config.py
 
 ### 📊 Analysis Tools
 - **analyze_top_agents.py** - Deep analysis
+- **analyze_tournament_history.py** - Multi-tournament analysis
 - **visualize_agent_behavior.py** - Strategy insights
 - **analyze_convergence.py** - Convergence detection
 

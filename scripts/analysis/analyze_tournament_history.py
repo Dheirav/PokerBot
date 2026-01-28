@@ -30,11 +30,16 @@ try:
     import matplotlib.pyplot as plt
     import matplotlib
     matplotlib.use('Agg')  # Non-interactive backend
-    import numpy as np
     MATPLOTLIB_AVAILABLE = True
 except ImportError:
     MATPLOTLIB_AVAILABLE = False
     print("Warning: matplotlib not available. Visualizations will be skipped.")
+
+try:
+    import numpy as np
+    NUMPY_AVAILABLE = True
+except ImportError:
+    NUMPY_AVAILABLE = False
 
 
 class AgentStats:
@@ -156,23 +161,72 @@ def load_tournament_data(report_path: Path) -> Dict:
         return json.load(f)
 
 
-def analyze_tournament_history(min_tournaments: int = 1) -> Tuple[Dict[str, AgentStats], List[Dict]]:
+def analyze_tournament_history(min_tournaments: int = 1, specific_folder: str = None) -> Tuple[Dict[str, AgentStats], List[Dict]]:
     """
     Analyze all tournament results and aggregate statistics.
     
     Args:
         min_tournaments: Minimum number of tournaments an agent must participate in
+        specific_folder: Specific tournament or batch folder to analyze
+                        Can be a single tournament (e.g., 'tournament_reports/tournament_20260128_120000')
+                        or a batch folder containing multiple tournaments (e.g., 'tournament_reports/Batch2')
         
     Returns:
         Tuple of (agent_stats dictionary, list of match data dictionaries)
     """
-    reports = find_tournament_reports()
-    
-    if not reports:
-        print("No tournament reports found in tournament_reports/")
-        return {}, []
-    
-    print(f"Found {len(reports)} tournament(s) to analyze\n")
+    if specific_folder:
+        folder_path = Path(specific_folder)
+        if not folder_path.exists():
+            print(f"Error: Folder '{specific_folder}' not found")
+            return {}, []
+        
+        # Check if it's a single tournament folder or a batch folder
+        report_path = folder_path / 'report.json'
+        if not report_path.exists():
+            report_path = folder_path / 'round_robin_report.json'
+        
+        if report_path.exists():
+            # Single tournament folder
+            reports = [('specific', report_path)]
+            print(f"Analyzing specific tournament: {specific_folder}\n")
+        else:
+            # Batch folder containing multiple tournaments
+            print(f"Scanning batch folder: {specific_folder}")
+            reports = []
+            for tournament_dir in folder_path.iterdir():
+                if not tournament_dir.is_dir():
+                    continue
+                
+                # Extract timestamp from directory name
+                match = re.search(r'tournament_(\d{8}_\d{6})', tournament_dir.name)
+                if not match:
+                    continue
+                
+                timestamp = match.group(1)
+                
+                # Try both possible report filenames
+                report = tournament_dir / 'report.json'
+                if not report.exists():
+                    report = tournament_dir / 'round_robin_report.json'
+                
+                if report.exists():
+                    reports.append((timestamp, report))
+            
+            if not reports:
+                print(f"Error: No tournament reports found in '{specific_folder}'")
+                return {}, []
+            
+            reports = sorted(reports)  # Sort by timestamp
+            print(f"Found {len(reports)} tournament(s) in batch folder\n")
+    else:
+        # Analyze all tournaments
+        reports = find_tournament_reports()
+        
+        if not reports:
+            print("No tournament reports found in tournament_reports/")
+            return {}, []
+        
+        print(f"Found {len(reports)} tournament(s) to analyze\n")
     
     agent_stats = {}
     all_matches = []  # Store all individual match results
@@ -518,15 +572,15 @@ def print_report(agent_stats: Dict[str, AgentStats],
     print("\n" + "="*80 + "\n")
 
 
-def create_head_to_head_matrix(agent_stats: Dict[str, AgentStats]) -> Tuple[List[str], np.ndarray]:
+def create_head_to_head_matrix(agent_stats: Dict[str, AgentStats]) -> Tuple[List[str], any]:
     """
     Create a head-to-head win rate matrix for visualization.
     
     Returns:
         Tuple of (agent names list, win rate matrix)
     """
-    if not MATPLOTLIB_AVAILABLE:
-        return [], np.array([])
+    if not NUMPY_AVAILABLE or not MATPLOTLIB_AVAILABLE:
+        return [], []
     
     agent_names = sorted(agent_stats.keys())
     n = len(agent_names)
@@ -914,16 +968,21 @@ def main():
         epilog="""
 Examples:
   # Analyze all tournaments
-  python scripts/analyze_tournament_history.py
+  python scripts/analysis/analyze_tournament_history.py
+  
+  # Analyze tournaments from a specific folder
+  python scripts/analysis/analyze_tournament_history.py --folder tournament_reports/tournament_20260128_120000
   
   # Only analyze agents that participated in 2+ tournaments
-  python scripts/analyze_tournament_history.py --min-tournaments 2
+  python scripts/analysis/analyze_tournament_history.py --min-tournaments 2
   
   # Show top 5 agents and save to custom file
-  python scripts/analyze_tournament_history.py --top-n 5 --output my_analysis.txt
+  python scripts/analysis/analyze_tournament_history.py --top-n 5 --output my_analysis.txt
         """
     )
     
+    parser.add_argument('--folder', type=str, default=None,
+                       help='Specific tournament folder to analyze (default: analyze all)')
     parser.add_argument('--min-tournaments', type=int, default=1,
                        help='Minimum tournaments an agent must participate in (default: 1)')
     parser.add_argument('--top-n', type=int, default=10,
@@ -939,7 +998,10 @@ Examples:
     print(f"Output directory: {output_dir}\n")
     
     # Analyze tournament history
-    agent_stats, all_matches = analyze_tournament_history(min_tournaments=args.min_tournaments)
+    agent_stats, all_matches = analyze_tournament_history(
+        min_tournaments=args.min_tournaments,
+        specific_folder=args.folder
+    )
     
     if not agent_stats:
         print("No agent data found matching criteria.")

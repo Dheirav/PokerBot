@@ -33,6 +33,11 @@ hyperparam_results/
 # Tournament reports (large directories with PNGs and reports)
 tournament_reports/
 
+# Hall of Fame agents (optional - comment out if you want to track these)
+hall_of_fame/champions/*.npy
+hall_of_fame/milestones/*.npy
+hall_of_fame/archived/*.npy
+
 # TensorBoard
 runs/
 
@@ -68,3 +73,8 @@ profile.stats
 deep_sweep_report.txt
 tournament_history_analysis.txt
 ai_hands_log.txt
+analysis_report.txt
+
+# Keep documentation files but ignore outdated ones
+# OPTIMIZATION_*.md files are kept in repo
+# HYPERPARAMETER_RELATIONSHIPS.md is kept in repo

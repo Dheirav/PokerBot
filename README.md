@@ -45,20 +45,22 @@ PokerBot/
 ├── engine/                  # Poker game engine (cards, rules, hand evaluation)
 ├── training/                # Evolutionary training system (genomes, networks, fitness)
 ├── agents/                  # Pre-trained and baseline agents (random, heuristic)
-├── scripts/                 # Training, evaluation, and analysis scripts (18 total)
+├── scripts/                 # Training, evaluation, and analysis scripts (21 total)
 ├── evaluator/               # Hand strength and equity calculations
 ├── utils/                   # Utility functions and helpers
+├── examples/                # Example scripts and usage demonstrations
+├── hall_of_fame/            # Elite agent genomes (tournament winners, milestones)
 ├── tests/                   # Unit tests
-├── data/                    # Placeholder for training data (currently unused)
 ├── checkpoints/             # Saved training runs and models
 ├── hyperparam_results/      # Hyperparameter sweep results and visualizations
 ├── tournament_reports/      # Round-robin tournament results and charts
 ├── logs/                    # Training logs and tensorboard events
 ├── match_logs/              # Game history logs (optional, disabled by default)
-├── OPTIMIZATION_STATUS.md   # Complete optimization roadmap
+├── OPTIMIZATION_DOCS.md     # Detailed optimization documentation
+├── OPTIMIZATION_GUIDE.md    # Step-by-step optimization guide
 ├── OPTIMIZATION_SUMMARY.md  # Quick optimization reference
-├── NUMBA_JIT_GUIDE.md       # Numba JIT compilation patterns
-├── FORWARD_BATCH_INTEGRATION.md  # Batched inference documentation
+├── HYPERPARAMETER_RELATIONSHIPS.md  # Proven hyperparameter design rules
+├── PRE_UPLOAD_CHECKLIST.md  # Pre-deployment checklist
 └── deep_sweep_report.txt    # Latest deep hyperparameter sweep results
 ```
 
@@ -68,6 +70,9 @@ PokerBot/
 - [agents/README.md](agents/README.md) - Baseline agents
 - [evaluator/README.md](evaluator/README.md) - Hand ranking and equity
 - [utils/README.md](utils/README.md) - Utility functions
+- [hall_of_fame/README.md](hall_of_fame/README.md) - Elite agent storage
+- [scripts/README.md](scripts/README.md) - Complete scripts guide
+- [HYPERPARAMETER_RELATIONSHIPS.md](HYPERPARAMETER_RELATIONSHIPS.md) - Proven hyperparameter design rules
 
 ---
 
