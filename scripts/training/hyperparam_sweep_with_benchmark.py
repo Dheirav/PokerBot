@@ -184,6 +184,16 @@ Examples:
     
     results = []
     
+    # Prepare sweep input metadata
+    sweep_input = {
+        'pop': args.pop,
+        'matchups': args.matchups,
+        'hands': args.hands,
+        'sigmas': args.sigma,
+        'generations': args.gens,
+        'timestamp': datetime.now().isoformat()
+    }
+    
     for idx, (pop, matchups, hands, sigma) in enumerate(configs, 1):
         config_name = f"p{pop}_m{matchups}_h{hands}_s{sigma}"
         print(f"\n[{idx}/{total_configs}] {config_name}")
@@ -265,8 +275,12 @@ Examples:
             })
         
         # Save intermediate results
+        output_data = {
+            'sweep_input': sweep_input,
+            'results': results
+        }
         with open(sweep_dir / 'results.json', 'w') as f:
-            json.dump(results, f, indent=2)
+            json.dump(output_data, f, indent=2)
     
     # Generate report
     print("\n" + "="*70)

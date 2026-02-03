@@ -16,9 +16,15 @@ import seaborn as sns
 import argparse
 
 def load_results(json_path):
-    """Load results from JSON file."""
+    """Load results from JSON file. Handles both old (list) and new (dict with sweep_input) formats."""
     with open(json_path, 'r') as f:
-        return json.load(f)
+        data = json.load(f)
+    
+    # Handle both old format (list) and new format (dict with sweep_input)
+    if isinstance(data, dict) and 'results' in data:
+        return data['results'], data.get('sweep_input')
+    else:
+        return data, None
 
 def plot_final_metrics_comparison(results, output_dir):
     """Compare final metrics across all configurations."""
@@ -424,7 +430,7 @@ Examples:
         return
     
     print(f"Loading results from: {json_path}")
-    results = load_results(json_path)
+    results, sweep_input = load_results(json_path)
     print(f"Loaded {len(results)} configurations")
     
     # Create output directory for plots

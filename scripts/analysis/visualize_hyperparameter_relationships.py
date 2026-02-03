@@ -4,38 +4,117 @@ Generate visualizations for proven hyperparameter relationships.
 
 This script creates publication-quality plots showing the empirical relationships
 between population size, matchups, hands, and mutation sigma based on tournament data.
+
+Automatically extracts data from all tournament reports in tournament_reports/ directory.
 """
 
 import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
+import json
+import re
+from collections import defaultdict
 
-# Tournament data: (name, win_rate)
-configs = [
-    # Batch 1 winners
-    ('p40_m8_h375_s0.1_g50', 78.7),
-    ('p40_m6_h500_s0.15_g200', 73.1),
-    ('p40_m8_h375_s0.1_g200', 72.2),
-    ('p20_m6_h500_s0.15_g200', 71.3),
-    ('p12_m6_h500_s0.15_g200', 68.5),
+def extract_config_from_name(name: str):
+    """
+    Extract hyperparameters from agent name.
+    Format: p{pop}_m{matchups}_h{hands}_s{sigma}_g{gens}
+    """
+    pattern = r'p(\d+)_m(\d+)_h(\d+)_s([\d.]+)(?:_g(\d+))?'
+    match = re.search(pattern, name)
+    if match:
+        pop = int(match.group(1))
+        matchups = int(match.group(2))
+        hands = int(match.group(3))
+        sigma = float(match.group(4))
+        gens = int(match.group(5)) if match.group(5) else None
+        return pop, matchups, hands, sigma, gens
+    return None
+
+def load_tournament_data(tournament_reports_dir: Path):
+    """
+    Load all tournament data from tournament_reports directory.
+    Returns list of (name, win_rate) tuples.
+    """
+    print("Loading tournament data from all reports...")
     
-    # Batch 2 winners
-    ('p12_m8_h500_s0.08_g200', 81.2),
-    ('p12_m6_h750_s0.08_g50', 67.4),
-    ('p12_m6_h375_s0.1_g50', 63.9),
-    ('p12_m6_h750_s0.1_g50', 62.5),
-    ('p12_m6_h750_s0.1_g200', 61.1),
-]
+    agent_stats = defaultdict(lambda: {'wins': 0, 'losses': 0, 'tournaments': 0})
+    
+    # Search for all report.json files
+    for report_file in tournament_reports_dir.rglob('report.json'):
+        try:
+            with open(report_file) as f:
+                data = json.load(f)
+            
+            # Check if this is the right format
+            if 'agents' in data:
+                for agent in data['agents']:
+                    name = agent.get('name', '')
+                    wins = agent.get('wins', 0)
+                    losses = agent.get('losses', 0)
+                    
+                    # Only include agents with proper naming convention
+                    if extract_config_from_name(name):
+                        agent_stats[name]['wins'] += wins
+                        agent_stats[name]['losses'] += losses
+                        agent_stats[name]['tournaments'] += 1
+        except (json.JSONDecodeError, KeyError) as e:
+            print(f"  Skipping {report_file}: {e}")
+            continue
+    
+    # Calculate win rates
+    configs = []
+    for name, stats in agent_stats.items():
+        total_games = stats['wins'] + stats['losses']
+        if total_games > 0:
+            win_rate = (stats['wins'] / total_games) * 100
+            configs.append((name, win_rate))
+            print(f"  Loaded: {name[:40]:40s} {stats['wins']:3d}W {stats['losses']:3d}L ({win_rate:.1f}%)")
+    
+    print(f"\nTotal configs loaded: {len(configs)}")
+    return configs
+
+# Load tournament data dynamically
+tournament_reports_dir = Path(__file__).parent.parent.parent / 'tournament_reports'
+if not tournament_reports_dir.exists():
+    print(f"Error: Tournament reports directory not found: {tournament_reports_dir}")
+    print("Using fallback hardcoded data...")
+    # Fallback to hardcoded data if directory doesn't exist
+    configs = [
+        ('p40_m8_h375_s0.1_g50', 78.7),
+        ('p40_m6_h500_s0.15_g200', 73.1),
+        ('p40_m8_h375_s0.1_g200', 72.2),
+        ('p20_m6_h500_s0.15_g200', 71.3),
+        ('p12_m6_h500_s0.15_g200', 68.5),
+        ('p12_m8_h500_s0.08_g200', 81.2),
+        ('p12_m6_h750_s0.08_g50', 67.4),
+        ('p12_m6_h375_s0.1_g50', 63.9),
+        ('p12_m6_h750_s0.1_g50', 62.5),
+        ('p12_m6_h750_s0.1_g200', 61.1),
+    ]
+else:
+    configs = load_tournament_data(tournament_reports_dir)
 
 # Parse configs
 parsed = []
 for name, wr in configs:
-    parts = name.replace('_g50', '').replace('_g200', '').split('_')
-    pop = int(parts[0][1:])
-    matchups = int(parts[1][1:])
-    hands = int(parts[2][1:])
-    sigma = float(parts[3][1:])
-    parsed.append((pop, matchups, hands, sigma, wr, name))
+    result = extract_config_from_name(name)
+    if result:
+        pop, matchups, hands, sigma, gens = result
+        # Filter out configs with extremely low win rates (likely failed runs)
+        if wr > 10.0:  # Only include configs with >10% win rate
+            parsed.append((pop, matchups, hands, sigma, wr, name))
+        else:
+            print(f"  Skipping low win rate: {name} ({wr:.1f}%)")
+    else:
+        print(f"Warning: Could not parse config name: {name}")
+
+if not parsed:
+    print("Error: No valid configurations found!")
+    exit(1)
+
+print(f"\nParsed {len(parsed)} valid configurations for visualization")
+print("=" * 80)
 
 # Set style
 plt.style.use('seaborn-v0_8-darkgrid')
@@ -53,7 +132,7 @@ print("=" * 80)
 # ============================================================================
 print("\n1. Creating Population vs Matchups plot...")
 
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 10))
 fig.suptitle('Relationship 1: Population Size ↔ Matchups per Agent', 
              fontsize=16, fontweight='bold', y=1.02)
 
@@ -72,7 +151,7 @@ ax1.set_ylabel('Win Rate (%)', fontsize=12, fontweight='bold')
 ax1.set_title('Win Rate vs Matchups (by Population)', fontsize=13)
 ax1.legend(fontsize=11, loc='lower right')
 ax1.grid(True, alpha=0.3)
-ax1.set_ylim(55, 85)
+ax1.set_ylim(30, 100)
 
 # Right plot: Ratio-based
 for pop_size in [12, 20, 40]:
@@ -93,7 +172,7 @@ ax2.set_ylabel('Win Rate (%)', fontsize=12, fontweight='bold')
 ax2.set_title('Win Rate vs Matchup Ratio', fontsize=13)
 ax2.legend(fontsize=10, loc='lower right')
 ax2.grid(True, alpha=0.3)
-ax2.set_ylim(55, 85)
+ax2.set_ylim(30, 100)
 
 plt.tight_layout()
 plt.savefig(output_dir / 'relationship_1_population_vs_matchups.png', 
@@ -105,7 +184,7 @@ print(f"   ✓ Saved: {output_dir / 'relationship_1_population_vs_matchups.png'}
 # ============================================================================
 print("\n2. Creating Matchups vs Hands plot...")
 
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 10))
 fig.suptitle('Relationship 2: Matchups ↔ Hands per Matchup', 
              fontsize=16, fontweight='bold', y=1.02)
 
@@ -172,7 +251,7 @@ print(f"   ✓ Saved: {output_dir / 'relationship_2_matchups_vs_hands.png'}")
 # ============================================================================
 print("\n3. Creating Population vs Sigma plot...")
 
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 10))
 fig.suptitle('Relationship 3: Population Size ↔ Mutation Sigma', 
              fontsize=16, fontweight='bold', y=1.02)
 
@@ -200,7 +279,7 @@ ax1.set_ylabel('Win Rate (%)', fontsize=12, fontweight='bold')
 ax1.set_title('Win Rate vs Sigma (by Population)', fontsize=13)
 ax1.legend(fontsize=11, loc='lower left')
 ax1.grid(True, alpha=0.3)
-ax1.set_ylim(55, 85)
+ax1.set_ylim(30, 100)
 ax1.set_xlim(0.06, 0.16)
 
 # Right plot: Heat map showing population vs sigma
@@ -248,7 +327,7 @@ print(f"   ✓ Saved: {output_dir / 'relationship_3_population_vs_sigma.png'}")
 # ============================================================================
 print("\n4. Creating comprehensive overview plot...")
 
-fig = plt.figure(figsize=(16, 10))
+fig = plt.figure(figsize=(28, 20))
 gs = fig.add_gridspec(3, 3, hspace=0.3, wspace=0.3)
 
 fig.suptitle('Hyperparameter Relationships - Comprehensive Overview', 
@@ -281,7 +360,7 @@ ax1.set_xlabel('Population Size', fontsize=11, fontweight='bold')
 ax1.set_ylabel('Win Rate (%)', fontsize=11, fontweight='bold')
 ax1.set_title('Win Rate Distribution by Population', fontsize=12)
 ax1.grid(True, alpha=0.3, axis='y')
-ax1.set_ylim(55, 85)
+ax1.set_ylim(30, 100)
 
 # Top middle: Matchups distribution
 ax2 = fig.add_subplot(gs[0, 1])
@@ -304,7 +383,7 @@ ax2.set_xlabel('Matchups per Agent', fontsize=11, fontweight='bold')
 ax2.set_ylabel('Win Rate (%)', fontsize=11, fontweight='bold')
 ax2.set_title('Win Rate Distribution by Matchups', fontsize=12)
 ax2.grid(True, alpha=0.3, axis='y')
-ax2.set_ylim(55, 85)
+ax2.set_ylim(30, 100)
 
 # Top right: Sigma distribution
 ax3 = fig.add_subplot(gs[0, 2])
@@ -327,30 +406,32 @@ ax3.set_xlabel('Mutation Sigma', fontsize=11, fontweight='bold')
 ax3.set_ylabel('Win Rate (%)', fontsize=11, fontweight='bold')
 ax3.set_title('Win Rate Distribution by Sigma', fontsize=12)
 ax3.grid(True, alpha=0.3, axis='y')
-ax3.set_ylim(55, 85)
+ax3.set_ylim(30, 100)
 
 # Middle row: 3D-style visualization (population, matchups, win rate)
 ax4 = fig.add_subplot(gs[1, :])
 for p, m, h, s, wr, n in parsed:
     color = colors.get(f'p{p}', '#3498db')
-    size = (wr - 50) * 10  # Scale by win rate
+    size = max(50, (wr - 10) * 10)  # Ensure minimum size, scale from 10% baseline
     ax4.scatter(p, m, s=size, alpha=0.6, color=color, edgecolors='black', linewidth=1)
     
 # Add champion marker
-champion = [(p, m, wr) for p, m, h, s, wr, n in parsed if wr > 78][0]
-ax4.scatter(champion[0], champion[1], s=500, alpha=0.3, color='gold', 
-           edgecolors='gold', linewidth=3, marker='*', zorder=10, label='Champion')
+champion = [(p, m, wr) for p, m, h, s, wr, n in parsed if wr > max(wr2 for _, _, _, _, wr2, _ in parsed) - 5]
+if champion:
+    for p, m, wr in champion[:3]:  # Mark top 3
+        ax4.scatter(p, m, s=500, alpha=0.3, color='gold', 
+                   edgecolors='gold', linewidth=3, marker='*', zorder=10)
 
 ax4.set_xlabel('Population Size', fontsize=12, fontweight='bold')
 ax4.set_ylabel('Matchups per Agent', fontsize=12, fontweight='bold')
 ax4.set_title('Population vs Matchups (bubble size = win rate)', fontsize=13)
-ax4.legend(fontsize=11)
+ax4.legend(fontsize=11, loc='upper left')
 ax4.grid(True, alpha=0.3)
 
 # Bottom left: Best configs ranking
 ax5 = fig.add_subplot(gs[2, :])
-top_configs = sorted(parsed, key=lambda x: x[4], reverse=True)[:8]
-names = [f"{n.split('_')[0]}\n{n.split('_')[1]}\n{n.split('_')[2]}" for p, m, h, s, wr, n in top_configs]
+top_configs = sorted(parsed, key=lambda x: x[4], reverse=True)[:min(8, len(parsed))]
+names = [f"Pop: {p}\nMatchups: {m}\nHands: {h}" for p, m, h, s, wr, n in top_configs]
 wrs = [wr for p, m, h, s, wr, n in top_configs]
 colors_list = [colors.get(f'p{p}', '#3498db') for p, m, h, s, wr, n in top_configs]
 
@@ -358,13 +439,20 @@ bars = ax5.barh(range(len(names)), wrs, color=colors_list, alpha=0.7, edgecolor=
 ax5.set_yticks(range(len(names)))
 ax5.set_yticklabels(names, fontsize=9)
 ax5.set_xlabel('Win Rate (%)', fontsize=12, fontweight='bold')
-ax5.set_title('Top 8 Configurations', fontsize=13)
+ax5.set_title(f'Top {len(top_configs)} Configurations', fontsize=13)
 ax5.grid(True, alpha=0.3, axis='x')
-ax5.set_xlim(55, 85)
+ax5.set_xlim(0, max(100, max(wrs) + 5))
 
 # Add value labels
 for i, (bar, wr) in enumerate(zip(bars, wrs)):
-    ax5.text(wr + 0.5, i, f'{wr:.1f}%', va='center', fontsize=9, fontweight='bold')
+    ax5.text(wr + 1, i, f'{wr:.1f}%', va='center', fontsize=9, fontweight='bold')
+
+# Update color legend to explain meaning of colors
+color_legend = {'#e74c3c': 'Population 12', '#f39c12': 'Population 20', '#27ae60': 'Population 40'}
+
+# Add color legend to the plot
+legend_patches = [plt.Line2D([0], [0], color=color, lw=4, label=label) for color, label in color_legend.items()]
+ax5.legend(handles=legend_patches, fontsize=10, loc='lower right', title='Population Colors')
 
 plt.tight_layout()
 plt.savefig(output_dir / 'comprehensive_overview.png', 

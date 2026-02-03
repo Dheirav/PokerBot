@@ -175,7 +175,13 @@ def main():
             sys.exit(1)
         
         with open(results_path) as f:
-            results = json.load(f)
+            data = json.load(f)
+        
+        # Handle both old format (list) and new format (dict with sweep_input)
+        if isinstance(data, dict) and 'results' in data:
+            results = data['results']
+        else:
+            results = data
 
         # Attach convergence status
         for r in results:

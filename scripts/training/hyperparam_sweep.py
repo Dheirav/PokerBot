@@ -185,14 +185,28 @@ def main():
     configs = create_configs(args.pop, args.matchups, args.hands, args.sigma, args.gens)
     print(f"\nTesting {len(configs)} configurations | Output: {out_dir}\n")
     
+    # Prepare sweep input metadata
+    sweep_input = {
+        'pop': args.pop,
+        'matchups': args.matchups,
+        'hands': args.hands,
+        'sigmas': args.sigma,
+        'generations': args.gens,
+        'timestamp': datetime.now().isoformat()
+    }
+    
     results = []
     for i, (name, params) in enumerate(configs, 1):
-        print(f\"\\n[{i}/{len(configs)}] {name}\")
+        print(f"\n[{i}/{len(configs)}] {name}")
         r = run_exp(name, params, args.seed, str(out_dir))
         if r:
             results.append(r)
+            output_data = {
+                'sweep_input': sweep_input,
+                'results': results
+            }
             with open(out_dir / 'results.json', 'w') as f:
-                json.dump(results, f, indent=2)
+                json.dump(output_data, f, indent=2)
     
     if not results:
         print("No results"); return

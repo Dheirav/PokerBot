@@ -5,6 +5,10 @@
 **Total Configurations Analyzed**: 19 unique configs  
 **Total Games Analyzed**: 2,952 matches
 
+**See Also**: 
+- [HOF_IMPACT_ANALYSIS.md](HOF_IMPACT_ANALYSIS.md) - Hall of Fame training provides +52% win rate improvement
+- [TRAINING_FINDINGS_REPORT.md](TRAINING_FINDINGS_REPORT.md) - Comprehensive formal research report with full statistical analysis
+
 ---
 
 ## Executive Summary

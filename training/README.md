@@ -2,6 +2,10 @@
 
 **Evolutionary poker AI training through self-play**
 
+**See Also**: 
+- [HOF_IMPACT_ANALYSIS.md](../HOF_IMPACT_ANALYSIS.md) - Hall of Fame training provides +52% win rate improvement
+- [TRAINING_FINDINGS_REPORT.md](../TRAINING_FINDINGS_REPORT.md) - Comprehensive formal research report
+
 ---
 
 ## Overview
@@ -13,14 +17,14 @@ This module implements an evolutionary algorithm for training poker AI agents. N
 - 🎲 Self-play fitness evaluation  
 - 🧠 Neural network policy agents
 - 📊 Population diversity maintenance
-- 🏆 **Hall of Fame pre-loading** for training with strong opponents
+- 🏆 **Hall of Fame pre-loading** for training with strong opponents (+52% win rate)
 - ⚡ Parallel evaluation with multiprocessing
 - 🎯 Configurable hyperparameters
 - ⚡ **Numba JIT-optimized** for 2-3× speedup
 
 **Performance**: ~4-6 sec/generation with Numba, ~13 sec without
 
-**New Feature**: `EvolutionTrainer.initialize()` now accepts `hof_weights` parameter to pre-load Hall of Fame opponents. This prevents small populations from overfitting to weak self-play opponents.
+**New Feature**: `EvolutionTrainer.initialize()` now accepts `hof_weights` parameter to pre-load Hall of Fame opponents. This prevents small populations from overfitting to weak self-play opponents. Analysis shows HoF training provides **+52.2% relative improvement** in win rate.
 
 ---
 

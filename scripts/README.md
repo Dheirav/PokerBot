@@ -947,7 +947,38 @@ python scripts/round_robin_agents_config.py
 ### 🔧 Utilities
 - **cleanup_checkpoints.py** - Disk management
 - **benchmark_jit.py** - Performance verification
+- **check_hof_updates.py** - Hall of Fame update checker
 - **test_*.py** - Testing and debugging
+
+### 🏆 Hall of Fame Management
+- **check_hof_updates.py** - Analyzes recent training runs and tournament results to identify genomes that should be added to the Hall of Fame. Checks for new champions (fitness ≥ 70), milestone genomes (gen 50/100/200), and strong performers. Can optionally generate a shell script to automate the updates.
+
+**Usage:**
+```bash
+# Check for any updates needed
+python scripts/utilities/check_hof_updates.py
+
+# Only check recent runs (last 7 days)
+python scripts/utilities/check_hof_updates.py --days 7
+
+# Set custom fitness threshold
+python scripts/utilities/check_hof_updates.py --min-fitness 65
+
+# Generate shell script to update HoF automatically
+python scripts/utilities/check_hof_updates.py --generate-script
+
+# Verbose output
+python scripts/utilities/check_hof_updates.py --verbose
+```
+
+### 🧩 Sweep Integrity Tools
+- **check_sweep_missing.py** - Utility to identify which hyperparameter sweep configurations have not been run. Use this to ensure all intended parameter combinations are present in your sweep results and to catch missing or failed runs.
+
+**Usage:**
+```bash
+python scripts/utilities/check_sweep_missing.py --results hyperparam_results/sweep_YYYYMMDD_HHMMSS/results.json --expected-grid <grid_spec>
+```
+Refer to the script for argument details and grid specification format.
 
 ### 🚀 Advanced
 - **deep_hyperparam_sweep.py** - Thorough optimization
@@ -970,12 +1001,46 @@ python scripts/round_robin_agents_config.py
 - Use hyperparameter sweeps first
 
 **Debugging**:
-- Use `--quick` flag for fast iterations
-- Enable logging with `--log` flag
-- Test with `test_ai_hands.py`
-- Check features with `test_ai_features.py`
+
+Use `--quick` flag for fast iterations
+Enable logging with `--log` flag
+Test with `test_ai_hands.py`
+Check features with `test_ai_features.py`
 
 ---
+### Batch Inference (Forward Batch Integration)
+
+All training and evaluation scripts use batched neural network inference for major speedups. This is automatic if Numba is installed. To benchmark or verify batching:
+
+```bash
+python scripts/utilities/benchmark_jit.py
+```
+
+See [FORWARD_BATCH_INTEGRATION.md](../FORWARD_BATCH_INTEGRATION.md) for technical details.
+
+
+### Convergence Status Detection
+
+**Purpose**: Automatically detect the convergence status of each training configuration in hyperparameter sweeps and deep sweeps.
+
+**How it works**:
+- Analyzes the fitness curve of each config over the last 5 generations.
+- Assigns one of four statuses:
+  - **PLATEAUED**: No improvement in last 5 generations (ready for evaluation)
+  - **SLOW_IMPROVEMENT**: 5-20 fitness gain in last 5 generations (almost done)
+  - **IMPROVING**: 20-50 fitness gain in last 5 generations (needs more time)
+  - **STRONGLY_IMPROVING**: 50+ fitness gain in last 5 generations (train longer!)
+- Used by sweep analysis and deep sweep scripts to filter, select, and extend configs intelligently.
+
+**Usage**:
+  - The status is reported in sweep result summaries and can be used with `--min-status` or `--strongly-improving-only` flags in deep sweep scripts.
+  - Example:
+    ```bash
+    python scripts/training/deep_hyperparam_sweep.py --min-status IMPROVING --generations 100
+    python scripts/training/deep_hyperparam_sweep.py --strongly-improving-only --generations 100
+    ```
+
+**Benefit**: Saves compute by focusing training on configs that are still improving, and helps identify when a config is ready for evaluation or further training.
 
 ## 🆘 Troubleshooting
 

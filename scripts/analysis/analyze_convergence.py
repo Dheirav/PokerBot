@@ -357,7 +357,13 @@ def main():
         print(f"Sweep directory: {json_path.parent}")
         
         with open(json_path, 'r') as f:
-            results = json.load(f)
+            data = json.load(f)
+        
+        # Handle both old format (list) and new format (dict with sweep_input)
+        if isinstance(data, dict) and 'results' in data:
+            results = data['results']
+        else:
+            results = data
         
         print(f"Loaded {len(results)} configurations")
         

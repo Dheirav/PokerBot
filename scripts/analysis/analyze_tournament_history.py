@@ -10,9 +10,15 @@ Analyzes cumulative tournament results across multiple tournament runs to identi
 - Visual analysis with charts and heatmaps
 
 Usage:
-    python scripts/analyze_tournament_history.py [--min-tournaments N]
+    # Analyze all tournaments in tournament_reports directory
+    python scripts/analysis/analyze_tournament_history.py
+    
+    # Analyze tournaments from a specific batch folder
+    python scripts/analysis/analyze_tournament_history.py --folder tournament_reports/Batch1
+    python scripts/analysis/analyze_tournament_history.py --folder tournament_reports/Batch1and2Purge
 
 Options:
+    --folder FOLDER        Analyze specific tournament folder/batch (default: all tournaments)
     --min-tournaments N    Only include agents that participated in N+ tournaments (default: 1)
     --top-n N             Show top N agents in rankings (default: 10)
 """
@@ -55,6 +61,25 @@ class AgentStats:
         self.tournament_dates = []
         self.opponents = defaultdict(lambda: {'wins': 0, 'losses': 0})  # Head-to-head stats
         
+        # New metrics for multi-table tournaments
+        self.total_tables_played = 0
+        self.win_rates = []  # Per-tournament win rates
+        self.avg_chips_per_table = []  # Per-tournament avg chips
+        self.consistency_scores = []  # Per-tournament consistency
+        self.positive_table_pcts = []  # Per-tournament positive table %
+        self.finish_distributions = defaultdict(int)  # Cumulative finish positions
+        
+        # New metrics for heads-up tournaments
+        self.elo_ratings = []  # Per-tournament Elo ratings
+        self.win_percentages = []  # Per-tournament win %
+        self.avg_chip_margins = []  # Per-tournament chip margins
+        self.h2h_win_rates = defaultdict(list)  # Per-opponent win rates over time
+        
+        # Track tournament modes
+        self.tournament_modes = []  # 'multi-table' or 'heads-up'
+        # Store all extra fields for holistic reporting
+        self.extra_fields = defaultdict(list)  # field_name -> list of values
+        
     @property
     def total_games(self) -> int:
         return self.total_wins + self.total_losses
@@ -72,6 +97,18 @@ class AgentStats:
         return self.total_chip_earnings / self.total_tournaments
     
     @property
+    def avg_elo_rating(self) -> float:
+        if not self.elo_ratings:
+            return 0.0
+        return sum(self.elo_ratings) / len(self.elo_ratings)
+    
+    @property
+    def avg_consistency(self) -> float:
+        if not self.consistency_scores:
+            return 0.0
+        return sum(self.consistency_scores) / len(self.consistency_scores)
+    
+    @property
     def chip_consistency(self) -> float:
         """Lower is better - measures variance in chip performance."""
         if len(self.chip_counts) < 2:
@@ -80,14 +117,47 @@ class AgentStats:
         variance = sum((x - mean) ** 2 for x in self.chip_counts) / len(self.chip_counts)
         return variance ** 0.5
     
-    def add_tournament_result(self, wins: int, losses: int, final_chips: int, date: str):
-        """Add results from a single tournament."""
+    def add_tournament_result(self, wins: int, losses: int, final_chips: int, date: str, 
+                            mode: str = 'heads-up', **kwargs):
+        """Add results from a single tournament with mode-specific metrics."""
         self.total_wins += wins
         self.total_losses += losses
         self.total_tournaments += 1
         self.total_chip_earnings += final_chips
         self.chip_counts.append(final_chips)
         self.tournament_dates.append(date)
+        self.tournament_modes.append(mode)
+        
+        # Store mode-specific metrics
+        if mode == 'multi-table':
+            self.total_tables_played += kwargs.get('tables_played', 0)
+            if 'win_rate' in kwargs:
+                self.win_rates.append(kwargs['win_rate'])
+            if 'avg_chips_per_table' in kwargs:
+                self.avg_chips_per_table.append(kwargs['avg_chips_per_table'])
+            if 'consistency' in kwargs:
+                self.consistency_scores.append(kwargs['consistency'])
+            if 'positive_table_pct' in kwargs:
+                self.positive_table_pcts.append(kwargs['positive_table_pct'])
+            if 'finish_distribution' in kwargs:
+                for pos, count in kwargs['finish_distribution'].items():
+                    self.finish_distributions[int(pos)] += count
+            if 'h2h_win_rates' in kwargs:
+                for opp, rate in kwargs['h2h_win_rates'].items():
+                    self.h2h_win_rates[opp].append(rate)
+        else:  # heads-up
+            if 'elo_rating' in kwargs:
+                self.elo_ratings.append(kwargs['elo_rating'])
+            if 'win_percentage' in kwargs:
+                self.win_percentages.append(kwargs['win_percentage'])
+            if 'avg_chip_margin' in kwargs:
+                self.avg_chip_margins.append(kwargs['avg_chip_margin'])
+            if 'consistency' in kwargs:
+                self.consistency_scores.append(kwargs['consistency'])
+        # Store all extra fields for holistic reporting
+        for k, v in kwargs.items():
+            if k not in {'win_rate','avg_chips_per_table','consistency','positive_table_pct','finish_distribution','h2h_win_rates','elo_rating','win_percentage','avg_chip_margin','win_loss_ratio','tables_played'}:
+                self.extra_fields[k].append(v)
     
     def add_head_to_head(self, opponent: str, won: bool):
         """Record a head-to-head matchup result."""
@@ -123,35 +193,38 @@ def parse_genome_spec(name: str) -> Dict[str, float]:
 
 def find_tournament_reports(base_dir: str = 'tournament_reports') -> List[Tuple[str, Path]]:
     """
-    Find all tournament JSON reports.
-    
+    Find all tournament JSON reports, including nested directories.
+
     Returns:
         List of (timestamp, path) tuples sorted by timestamp
     """
     base_path = Path(base_dir)
     if not base_path.exists():
         return []
-    
+
     reports = []
-    for tournament_dir in base_path.iterdir():
+    for tournament_dir in base_path.rglob('*'):
         if not tournament_dir.is_dir():
             continue
-        
-        # Extract timestamp from directory name (tournament_YYYYMMDD_HHMMSS)
-        match = re.search(r'tournament_(\d{8}_\d{6})', tournament_dir.name)
-        if not match:
+
+        # Extract timestamp from directory name (tournament_YYYYMMDD_HHMMSS or run_N)
+        match = re.search(r'(?:tournament_)?(\d{8}_\d{6})', tournament_dir.name)
+        if match:
+            timestamp = match.group(1)
+        elif tournament_dir.name.startswith('run_'):
+            # Use run number as timestamp for sorting
+            timestamp = tournament_dir.name
+        else:
             continue
-        
-        timestamp = match.group(1)
-        
+
         # Try both possible report filenames
         report_path = tournament_dir / 'report.json'
         if not report_path.exists():
             report_path = tournament_dir / 'round_robin_report.json'
-        
+
         if report_path.exists():
             reports.append((timestamp, report_path))
-    
+
     return sorted(reports)  # Sort by timestamp
 
 
@@ -197,12 +270,15 @@ def analyze_tournament_history(min_tournaments: int = 1, specific_folder: str = 
                 if not tournament_dir.is_dir():
                     continue
                 
-                # Extract timestamp from directory name
+                # Extract timestamp from directory name (tournament_YYYYMMDD_HHMMSS or run_N)
                 match = re.search(r'tournament_(\d{8}_\d{6})', tournament_dir.name)
-                if not match:
+                if match:
+                    timestamp = match.group(1)
+                elif tournament_dir.name.startswith('run_'):
+                    # Use run number as timestamp for sorting
+                    timestamp = tournament_dir.name
+                else:
                     continue
-                
-                timestamp = match.group(1)
                 
                 # Try both possible report filenames
                 report = tournament_dir / 'report.json'
@@ -235,6 +311,9 @@ def analyze_tournament_history(min_tournaments: int = 1, specific_folder: str = 
         print(f"Processing tournament from {timestamp}...")
         data = load_tournament_data(report_path)
         
+        # Get tournament mode (multi-table or heads-up)
+        tournament_mode = data.get('mode', 'heads-up')
+        
         # Extract results for each agent (handle both list and dict formats)
         agents_data = data.get('agents', [])
         if isinstance(agents_data, dict):
@@ -247,7 +326,8 @@ def analyze_tournament_history(min_tournaments: int = 1, specific_folder: str = 
                     wins=stats.get('wins', 0),
                     losses=stats.get('losses', 0),
                     final_chips=stats.get('final_chips', stats.get('chips', 0)),
-                    date=timestamp
+                    date=timestamp,
+                    mode=tournament_mode
                 )
         elif isinstance(agents_data, list):
             # New format: list of agent objects
@@ -256,11 +336,34 @@ def analyze_tournament_history(min_tournaments: int = 1, specific_folder: str = 
                 if agent_name not in agent_stats:
                     agent_stats[agent_name] = AgentStats(agent_name)
                 
+                # Collect mode-specific metrics
+                mode_specific_data = {}
+                if tournament_mode == 'multi-table':
+                    mode_specific_data = {
+                        'win_rate': agent.get('win_rate', 0),
+                        'avg_chips_per_table': agent.get('avg_chips_per_table', 0),
+                        'consistency': agent.get('consistency', 0),
+                        'positive_table_pct': agent.get('positive_table_pct', 0),
+                        'tables_played': agent.get('tables_played', 0),
+                        'finish_distribution': agent.get('finish_distribution', {}),
+                        'h2h_win_rates': agent.get('h2h_win_rates', {})
+                    }
+                else:  # heads-up
+                    mode_specific_data = {
+                        'win_percentage': agent.get('win_percentage', 0),
+                        'elo_rating': agent.get('elo_rating', 1500),
+                        'avg_chip_margin': agent.get('avg_chip_margin', 0),
+                        'win_loss_ratio': agent.get('win_loss_ratio', 0),
+                        'consistency': agent.get('consistency', 0)
+                    }
+                
                 agent_stats[agent_name].add_tournament_result(
                     wins=agent.get('wins', 0),
                     losses=agent.get('losses', 0),
                     final_chips=agent.get('chips', 0),
-                    date=timestamp
+                    date=timestamp,
+                    mode=tournament_mode,
+                    **mode_specific_data
                 )
                 
                 # Extract head-to-head from beat/lost_to lists
@@ -518,32 +621,86 @@ def print_report(agent_stats: Dict[str, AgentStats],
     total_agents = len(agent_stats)
     total_games = sum(s.total_games for s in agent_stats.values())
     
+    # Determine tournament modes present
+    all_modes = set()
+    for stats in agent_stats.values():
+        all_modes.update(stats.tournament_modes)
+    
     print(f"Total Tournaments Analyzed: {total_tournaments}")
+    print(f"Tournament Modes: {', '.join(all_modes) if all_modes else 'Unknown'}")
     print(f"Unique Agents: {total_agents}")
     print(f"Total Games Played: {total_games}")
     print()
     
-    # Top performers
-    print("-" * 80)
-    print(f" TOP {top_n} AGENTS BY WIN RATE ".center(80, "-"))
-    print("-" * 80)
-    print(f"{'Rank':<6} {'Agent Name':<40} {'Win Rate':<12} {'W-L':<12} {'Avg Chips':<15}")
-    print("-" * 80)
+    # Top performers with mode-specific metrics
+    print("-" * 100)
+    if 'multi-table' in all_modes:
+        print(f" TOP {top_n} AGENTS (Multi-Table Metrics) ".center(100, "-"))
+        print("-" * 100)
+        print(f"{'Rank':<6} {'Agent Name':<35} {'WinRate':<10} {'AvgChips/T':<12} {'Consistency':<12} {'Tables':<8}")
+        print("-" * 100)
+        
+        sorted_agents = sorted(agent_stats.values(),
+                              key=lambda s: (s.win_rate, sum(s.avg_chips_per_table) / len(s.avg_chips_per_table) if s.avg_chips_per_table else 0),
+                              reverse=True)
+        
+        for rank, stats in enumerate(sorted_agents[:top_n], 1):
+            avg_chips_t = sum(stats.avg_chips_per_table) / len(stats.avg_chips_per_table) if stats.avg_chips_per_table else 0
+            avg_cons = stats.avg_consistency
+            tables = stats.total_tables_played
+            print(f"{rank:<6} {stats.name:<35} {stats.win_rate:>7.1%}   {avg_chips_t:>10.1f}  {avg_cons:>10.1f}  {tables:>6}")
+        
+        # Show finish distribution for top agents
+        print("\n" + "-" * 100)
+        print(" FINISH POSITION DISTRIBUTION (Top 5) ".center(100, "-"))
+        print("-" * 100)
+        print(f"{'Agent':<35} {'1st':<8} {'2nd':<8} {'3rd':<8} {'4th':<8} {'5th':<8} {'6th':<8}")
+        print("-" * 100)
+        
+        for stats in sorted_agents[:5]:
+            if stats.finish_distributions:
+                print(f"{stats.name:<35} ", end="")
+                for pos in range(1, 7):
+                    count = stats.finish_distributions.get(pos, 0)
+                    print(f"{count:<8}", end="")
+                print()
     
-    sorted_agents = sorted(agent_stats.values(),
-                          key=lambda s: (s.win_rate, s.avg_chips_per_tournament),
-                          reverse=True)
+    elif 'heads-up' in all_modes:
+        print(f" TOP {top_n} AGENTS (Heads-Up Metrics) ".center(100, "-"))
+        print("-" * 100)
+        print(f"{'Rank':<6} {'Agent Name':<35} {'WinRate':<10} {'Avg Elo':<10} {'ChipMargin':<12} {'W-L':<12}")
+        print("-" * 100)
+        
+        sorted_agents = sorted(agent_stats.values(),
+                              key=lambda s: (s.avg_elo_rating, s.win_rate),
+                              reverse=True)
+        
+        for rank, stats in enumerate(sorted_agents[:top_n], 1):
+            avg_elo = stats.avg_elo_rating
+            avg_margin = sum(stats.avg_chip_margins) / len(stats.avg_chip_margins) if stats.avg_chip_margins else 0
+            print(f"{rank:<6} {stats.name:<35} {stats.win_rate:>7.1%}   {avg_elo:>8.0f}  {avg_margin:>10.1f}  {stats.total_wins:>4}-{stats.total_losses:<5}")
     
-    for rank, stats in enumerate(sorted_agents[:top_n], 1):
-        print(f"{rank:<6} {stats.name:<40} {stats.win_rate:>6.1%}     "
-              f"{stats.total_wins:>4}-{stats.total_losses:<5} {stats.avg_chips_per_tournament:>12,.0f}")
+    else:
+        # Fallback for mixed or unknown modes
+        print(f" TOP {top_n} AGENTS BY WIN RATE ".center(100, "-"))
+        print("-" * 100)
+        print(f"{'Rank':<6} {'Agent Name':<40} {'Win Rate':<12} {'W-L':<12} {'Avg Chips':<15}")
+        print("-" * 100)
+        
+        sorted_agents = sorted(agent_stats.values(),
+                              key=lambda s: (s.win_rate, s.avg_chips_per_tournament),
+                              reverse=True)
+        
+        for rank, stats in enumerate(sorted_agents[:top_n], 1):
+            print(f"{rank:<6} {stats.name:<40} {stats.win_rate:>6.1%}     "
+                  f"{stats.total_wins:>4}-{stats.total_losses:<5} {stats.avg_chips_per_tournament:>12,.0f}")
     
     print()
     
     # Hyperparameter analysis
-    print("-" * 80)
-    print(" HYPERPARAMETER CORRELATION ANALYSIS ".center(80, "-"))
-    print("-" * 80)
+    print("-" * 100)
+    print(" HYPERPARAMETER CORRELATION ANALYSIS ".center(100, "-"))
+    print("-" * 100)
     
     for param_name, param_data in correlations.items():
         if not param_data:
@@ -562,14 +719,14 @@ def print_report(agent_stats: Dict[str, AgentStats],
     print()
     
     # Recommendations
-    print("-" * 80)
-    print(" RECOMMENDATIONS ".center(80, "-"))
-    print("-" * 80)
+    print("-" * 100)
+    print(" RECOMMENDATIONS ".center(100, "-"))
+    print("-" * 100)
     
     for rec in recommendations:
         print(rec)
     
-    print("\n" + "="*80 + "\n")
+    print("\n" + "="*100 + "\n")
 
 
 def create_head_to_head_matrix(agent_stats: Dict[str, AgentStats]) -> Tuple[List[str], any]:
@@ -681,12 +838,25 @@ def create_visualizations(agent_stats: Dict[str, AgentStats],
         cbar = plt.colorbar(im, ax=ax)
         cbar.set_label('Win Rate', rotation=270, labelpad=20)
         
-        # Add text annotations for key matchups
-        for i in range(min(len(agent_names), 10)):  # First 10 agents
-            for j in range(min(len(agent_names), 10)):
+        # Add text annotations for all matchups
+        # Adjust font size based on matrix size
+        n_agents = len(agent_names)
+        if n_agents <= 10:
+            fontsize = 7
+        elif n_agents <= 15:
+            fontsize = 6
+        elif n_agents <= 20:
+            fontsize = 5
+        else:
+            fontsize = 4
+            
+        for i in range(len(agent_names)):
+            for j in range(len(agent_names)):
                 if i != j:
+                    # Choose text color based on background for better contrast
+                    text_color = "white" if matrix[i, j] < 0.4 or matrix[i, j] > 0.6 else "black"
                     text = ax.text(j, i, f'{matrix[i, j]:.2f}',
-                                 ha="center", va="center", color="black", fontsize=7)
+                                 ha="center", va="center", color=text_color, fontsize=fontsize)
         
         plt.tight_layout()
         plt.savefig(output_dir / 'head_to_head_matrix.png', dpi=150, bbox_inches='tight')
@@ -749,7 +919,24 @@ def create_visualizations(agent_stats: Dict[str, AgentStats],
         plt.close()
     
     print(f"Visualizations saved to {output_dir}/")
+    
+    # Write a visualizations index with short descriptions
+    visuals = {
+        'win_rate_comparison.png': 'Top 15 agents by overall win rate (bar chart).',
+        'avg_chips_comparison.png': 'Top 15 agents by average chips per tournament (bar chart).',
+        'head_to_head_matrix.png': 'Head-to-head win rate matrix (rows = agent, cols = opponent).',
+        'hyperparameter_impact.png': 'Hyperparameter impact on performance (multiple bar charts).',
+        'consistency_analysis.png': 'Top 15 most consistent agents by chip std dev (horizontal bar chart).'
+    }
 
+    try:
+        with open(output_dir / 'visuals_index.txt', 'w') as vf:
+            vf.write('Visualizations index\n')
+            vf.write('====================\n\n')
+            for fname, desc in visuals.items():
+                vf.write(f"{fname}: {desc}\n")
+    except Exception:
+        pass
 
 def save_json_report(agent_stats: Dict[str, AgentStats],
                     correlations: Dict,
@@ -783,6 +970,9 @@ def save_json_report(agent_stats: Dict[str, AgentStats],
             'tournament_dates': stats.tournament_dates,
             'head_to_head': dict(stats.opponents)
         }
+        # Include aggregated extra fields for transparency
+        if hasattr(stats, 'extra_fields') and stats.extra_fields:
+            report['agents'][name]['extra_fields'] = {k: v for k, v in stats.extra_fields.items()}
     
     # Save JSON
     with open(output_dir / 'analysis_report.json', 'w') as f:
@@ -868,6 +1058,41 @@ def save_text_report(agent_stats: Dict[str, AgentStats],
             f.write(rec + "\n")
         
         f.write("\n" + "="*80 + "\n")
+
+        # Appendix: include all extra fields captured per agent for full transparency
+        f.write('\n' + '-'*80 + "\n")
+        f.write(' APPENDIX: AGENT EXTRA FIELDS (Raw aggregated values) '.center(80, '-') + "\n")
+        f.write('-'*80 + "\n\n")
+
+        for stats in sorted_agents:
+            f.write(f"Agent: {stats.name}\n")
+            if hasattr(stats, 'extra_fields') and stats.extra_fields:
+                for k, vals in stats.extra_fields.items():
+                    # Present a concise summary: unique values and counts
+                    try:
+                        uniq = list(dict.fromkeys(vals))[:10]
+                        f.write(f"   {k}: {uniq} (n={len(vals)})\n")
+                    except Exception:
+                        f.write(f"   {k}: {vals}\n")
+            else:
+                f.write("   (no extra fields)\n")
+            f.write('\n')
+
+        # Visualizations index reference
+        f.write('-'*80 + "\n")
+        f.write(' VISUALIZATIONS INDEX '.center(80, '-') + "\n")
+        f.write('-'*80 + "\n\n")
+        # Embedded visuals descriptions (fallback if visuals_index.txt is missing)
+        visuals_desc = {
+            'win_rate_comparison.png': 'Top 15 agents by overall win rate (bar chart).',
+            'avg_chips_comparison.png': 'Top 15 agents by average chips per tournament (bar chart).',
+            'head_to_head_matrix.png': 'Head-to-head win rate matrix (rows = agent, cols = opponent).',
+            'hyperparameter_impact.png': 'Hyperparameter impact on performance (multiple bar charts).',
+            'consistency_analysis.png': 'Top 15 most consistent agents by chip std dev (horizontal bar chart).'
+        }
+        for fname, desc in visuals_desc.items():
+            f.write(f"{fname}: {desc}\n")
+        f.write('\n' + '='*80 + '\n')
     
     print(f"Text report saved to: {output_file}")
 
@@ -982,7 +1207,7 @@ Examples:
     )
     
     parser.add_argument('--folder', type=str, default=None,
-                       help='Specific tournament folder to analyze (default: analyze all)')
+                       help='Specific tournament folder or batch to analyze (e.g., tournament_reports/Batch1, tournament_reports/Batch1and2Purge). If not specified, analyzes all tournaments in tournament_reports/')
     parser.add_argument('--min-tournaments', type=int, default=1,
                        help='Minimum tournaments an agent must participate in (default: 1)')
     parser.add_argument('--top-n', type=int, default=10,

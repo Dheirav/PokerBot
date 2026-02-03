@@ -45,7 +45,7 @@ PokerBot/
 ├── engine/                  # Poker game engine (cards, rules, hand evaluation)
 ├── training/                # Evolutionary training system (genomes, networks, fitness)
 ├── agents/                  # Pre-trained and baseline agents (random, heuristic)
-├── scripts/                 # Training, evaluation, and analysis scripts (21 total)
+├── scripts/                 # Training, evaluation, and analysis scripts (23 total)
 ├── evaluator/               # Hand strength and equity calculations
 ├── utils/                   # Utility functions and helpers
 ├── examples/                # Example scripts and usage demonstrations
@@ -60,6 +60,11 @@ PokerBot/
 ├── OPTIMIZATION_GUIDE.md    # Step-by-step optimization guide
 ├── OPTIMIZATION_SUMMARY.md  # Quick optimization reference
 ├── HYPERPARAMETER_RELATIONSHIPS.md  # Proven hyperparameter design rules
+├── HYPERPARAMETER_RELATIONSHIPS_FORMAT_COMPARISON.md  # Format analysis of hyperparameter docs
+├── HOF_IMPACT_ANALYSIS.md   # Hall of Fame training impact analysis (52% improvement)
+├── TRAINING_FINDINGS_REPORT.md  # Comprehensive research findings (formal report)
+├── GLOBAL_SYNTHESIS_REPORT.md  # Cross-document research synthesis and insights
+├── SWEEP_WORKFLOW_GUIDE.md  # Complete workflow guide for hyperparameter sweeps
 ├── PRE_UPLOAD_CHECKLIST.md  # Pre-deployment checklist
 └── deep_sweep_report.txt    # Latest deep hyperparameter sweep results
 ```
@@ -72,7 +77,14 @@ PokerBot/
 - [utils/README.md](utils/README.md) - Utility functions
 - [hall_of_fame/README.md](hall_of_fame/README.md) - Elite agent storage
 - [scripts/README.md](scripts/README.md) - Complete scripts guide
+- [examples/README.md](examples/README.md) - Example scripts and usage patterns
+
+**Key Research & Analysis**:
+- [TRAINING_FINDINGS_REPORT.md](TRAINING_FINDINGS_REPORT.md) - Comprehensive empirical analysis (formal research report)
+- [GLOBAL_SYNTHESIS_REPORT.md](GLOBAL_SYNTHESIS_REPORT.md) - Cross-document synthesis of all research findings
 - [HYPERPARAMETER_RELATIONSHIPS.md](HYPERPARAMETER_RELATIONSHIPS.md) - Proven hyperparameter design rules
+- [HOF_IMPACT_ANALYSIS.md](HOF_IMPACT_ANALYSIS.md) - Hall of Fame training impact (+52% win rate improvement)
+- [SWEEP_WORKFLOW_GUIDE.md](SWEEP_WORKFLOW_GUIDE.md) - Step-by-step workflow for hyperparameter optimization
 
 ---
 
@@ -121,6 +133,20 @@ python scripts/eval_baseline.py checkpoints/evolution_run/best_genome.pkl
 # Match two agents head-to-head
 python scripts/match_agents.py genome1.pkl genome2.pkl --hands 10000
 ```
+
+### Example Usage
+
+See [examples/](examples/) for complete example scripts:
+
+```bash
+# Train with pre-loaded Hall of Fame opponents
+python examples/train_vs_champions.py
+```
+
+This example demonstrates:
+- Loading tournament winners as HoF opponents
+- Configuring training with strong adversaries
+- Training small populations efficiently
 
 ---
 
@@ -174,7 +200,14 @@ python scripts/train.py \
 **Output**: Trained agents saved to `checkpoints/evolution_run/`
 
 ### Hyperparameter Optimization
-Find optimal training parameters with three specialized sweep tools:
+Find optimal training parameters with specialized sweep tools. **New features:**
+
+- **Sweep Directory Selection:** All sweep and analysis scripts now support a `--sweep-dir` argument to select which sweep results to analyze or extend. This allows you to reproduce, extend, or compare any previous experiment, not just the latest.
+
+  **Example:**
+  ```bash
+  python scripts/training/deep_hyperparam_sweep.py --sweep-dir sweep_hof_20260127_133129 --top 3 --generations 100
+  ```
 
 #### Standard Sweep (Self-Play Evaluation)
 ```bash
@@ -419,10 +452,15 @@ python scripts/cleanup_checkpoints.py --older-than 7  # Keep last 7 days
 - **`visualize_agent_behavior.py`**: Action distribution heatmaps by situation
 - **`visualize_hyperparam_sweep.py`**: Generate comparison plots for hyperparameter sweeps
 
+- **`analyze_tournament_history.py`**: **NEW** — Aggregates tournament results, generates head-to-head win matrices, hyperparameter correlations, and development recommendations. Produces detailed reports and visualizations for all agents and tournaments. See [scripts/README.md](scripts/README.md) for usage and output examples.
+
 ### Testing & Debugging Scripts
 - **`test_ai_hands.py`**: Test agent decisions on specific poker scenarios
 - **`test_ai_features.py`**: Verify feature extraction is working correctly
 - **`test_cli.py`**: Interactive poker game for testing engine
+
+### Example Scripts
+- **`examples/train_vs_champions.py`**: Example of training with Hall of Fame opponents pre-loaded. Demonstrates how to load tournament winners and train a new population against proven strong agents. Useful template for custom training setups.
 
 ### Performance Scripts
 - **`benchmark_jit.py`**: Measure Numba JIT compilation speedup
@@ -430,7 +468,7 @@ python scripts/cleanup_checkpoints.py --older-than 7  # Keep last 7 days
 ### Utility Scripts
 - **`cleanup_checkpoints.py`**: Manage disk space by removing old training runs
 
-**Total**: 18 scripts covering training, evaluation, analysis, testing, and utilities
+**Total**: 23 scripts covering training, evaluation, analysis, testing, and utilities
 
 ---
 
@@ -469,6 +507,15 @@ python scripts/cleanup_checkpoints.py --older-than 7  # Keep last 7 days
 ## ⚡ Performance Optimizations
 
 The system includes **11 major optimizations** providing 400-500× total speedup:
+
+### Batch Inference (Forward Batch Integration)
+All training and evaluation scripts use batched neural network inference for major speedups (1.4-1.5× faster). Instead of processing one hand at a time, the system processes multiple hands in parallel using vectorized operations. This is enabled by default and is mathematically equivalent to sequential inference.
+
+**How to verify:**
+- Run `python scripts/utilities/benchmark_jit.py` to see batch inference speedup.
+- See [FORWARD_BATCH_INTEGRATION.md](FORWARD_BATCH_INTEGRATION.md) for technical details.
+
+**No changes needed**—batching is automatic if Numba is installed.
 
 ### ✅ Implemented Optimizations
 
@@ -645,6 +692,13 @@ python scripts/test_cli.py
   - Network parameter conversion
   - Helper functions for AI system
 
+- **[examples/README.md](examples/README.md)** (200+ lines)
+  - Practical usage examples and templates
+  - Training with Hall of Fame opponents
+  - Python API vs CLI comparison
+  - Custom training pipeline patterns
+  - Integration guides and best practices
+
 ### Optimization Documentation (Performance & Implementation)
 
 - **[OPTIMIZATION_STATUS.md](OPTIMIZATION_STATUS.md)** (625 lines)
@@ -675,6 +729,43 @@ python scripts/test_cli.py
   - Technical implementation details
   - Learning impact verification (zero impact)
   - Code examples and usage
+
+### Research & Methodology Documentation
+
+- **[TRAINING_FINDINGS_REPORT.md](TRAINING_FINDINGS_REPORT.md)** (Comprehensive)
+  - **Purpose**: Formal research report on training experiments
+  - Empirical analysis of hyperparameter relationships
+  - Tournament results and statistical significance
+  - Methodology and experimental design
+  - Recommendations for future research
+
+- **[GLOBAL_SYNTHESIS_REPORT.md](GLOBAL_SYNTHESIS_REPORT.md)** (Research Synthesis)
+  - **Purpose**: Meta-analysis of all research documents
+  - Cross-document insights and themes
+  - Consolidated best practices
+  - Knowledge integration across experiments
+  - High-level strategic recommendations
+
+- **[HOF_IMPACT_ANALYSIS.md](HOF_IMPACT_ANALYSIS.md)** (Impact Study)
+  - **Purpose**: Hall of Fame training effectiveness analysis
+  - 52% win rate improvement with HoF opponents
+  - Small population optimization strategies
+  - Comparison: with vs without HoF training
+  - Cost-benefit analysis for compute efficiency
+
+- **[HYPERPARAMETER_RELATIONSHIPS.md](HYPERPARAMETER_RELATIONSHIPS.md)** (Design Guide)
+  - **Purpose**: Proven hyperparameter design principles
+  - Empirically validated relationships
+  - Population-matchups-hands tradeoffs
+  - Mutation sigma guidance
+  - Configuration recommendations by scenario
+
+- **[SWEEP_WORKFLOW_GUIDE.md](SWEEP_WORKFLOW_GUIDE.md)** (Process Guide)
+  - **Purpose**: End-to-end hyperparameter sweep workflow
+  - Initial sweep → deep sweep → tournament process
+  - Tool selection guide (standard/benchmark/HoF sweeps)
+  - Analysis and interpretation methods
+  - Decision trees for sweep strategies
 
 ### Results & Analysis Files
 

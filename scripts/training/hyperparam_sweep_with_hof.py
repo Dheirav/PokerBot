@@ -57,106 +57,39 @@ from training.policy_network import PolicyNetwork
 
 
 def find_tournament_winners(top_n=3):
-    """Find top N tournament winners from tournament reports."""
-    tournament_dir = Path(__file__).parent.parent.parent / 'tournament_reports'
+    """Load champions from hall_of_fame/champions folder."""
+    champions_dir = Path(__file__).parent.parent.parent / 'hall_of_fame' / 'champions'
     
-    if not tournament_dir.exists():
-        print(f"Warning: Tournament directory not found at {tournament_dir}")
+    if not champions_dir.exists():
+        print(f"Warning: Champions directory not found at {champions_dir}")
         return []
     
-    # Find all tournament report.json files
-    tournament_files = list(tournament_dir.glob('tournament_*/report.json'))
+    # Find all .npy files in champions folder
+    champion_files = sorted(champions_dir.glob('*.npy'))
     
-    if not tournament_files:
-        print("Warning: No tournament reports found")
+    if not champion_files:
+        print("Warning: No champion genomes found in hall_of_fame/champions")
         return []
     
-    # Aggregate results across all tournaments
-    agent_stats = defaultdict(lambda: {'wins': 0, 'losses': 0, 'chips': 0, 'count': 0, 'paths': set(), 'generations': []})
-    
-    for report_file in tournament_files:
-        try:
-            with open(report_file) as f:
-                data = json.load(f)
-            
-            for agent in data['agents']:
-                name = agent['name']
-                # Remove generation suffix for grouping (p40_m8_h375_s0.1_g200 -> p40_m8_h375_s0.1)
-                base_name = '_'.join(name.split('_')[:4])
-                
-                agent_stats[base_name]['wins'] += agent['wins']
-                agent_stats[base_name]['losses'] += agent['losses']
-                agent_stats[base_name]['chips'] += agent['chips']
-                agent_stats[base_name]['count'] += 1
-                
-                # Track checkpoint path and generation info
-                if 'original_path' in agent:
-                    agent_stats[base_name]['paths'].add(agent['original_path'])
-                if 'generations' in agent:
-                    agent_stats[base_name]['generations'].append(agent['generations'])
-        
-        except Exception as e:
-            print(f"Warning: Could not read {report_file}: {e}")
-    
-    if not agent_stats:
-        print("Warning: No agent statistics found in tournaments")
-        return []
-    
-    # Calculate win rates and sort
-    for name, stats in agent_stats.items():
-        total_games = stats['wins'] + stats['losses']
-        stats['win_rate'] = stats['wins'] / total_games if total_games > 0 else 0
-        stats['avg_chips'] = stats['chips'] / stats['count'] if stats['count'] > 0 else 0
-    
-    # Sort by win rate, then by average chips
-    sorted_agents = sorted(agent_stats.items(), 
-                          key=lambda x: (x[1]['win_rate'], x[1]['avg_chips']), 
-                          reverse=True)
-    
-    # Get top N winners and map to checkpoint paths
+    print(f"\nLoading champions from hall_of_fame/champions:")
     winners = []
-    for name, stats in sorted_agents[:top_n]:
-        checkpoint_path = None
-        
-        # Try to find checkpoint from original_path in tournament data
-        if stats['paths']:
-            for original_path in stats['paths']:
-                # Tournament reports store like: "deep_p40_m6_h500_s0.15/run_20260126_042643"
-                # Actual structure: checkpoints/deep_p40_m6_h500_s0.15/runs/run_20260126_042643/best_genome.npy
-                
-                # Try 1: checkpoints/{original_path}/best_genome.npy
-                path1 = Path('checkpoints') / original_path / 'best_genome.npy'
-                if path1.exists():
-                    checkpoint_path = path1
-                    break
-                
-                # Try 2: Insert 'runs' directory - checkpoints/{config}/runs/{run}/best_genome.npy
-                parts = original_path.split('/')
-                if len(parts) == 2:
-                    config_name, run_name = parts
-                    path2 = Path('checkpoints') / config_name / 'runs' / run_name / 'best_genome.npy'
-                    if path2.exists():
-                        checkpoint_path = path2
-                        break
-        
-        # Fallback: try evolution_run directory
-        if not checkpoint_path:
-            checkpoint_base = f"deep_{name}"
-            fallback_path = Path('checkpoints') / checkpoint_base / 'evolution_run' / 'best_genome.npy'
-            if fallback_path.exists():
-                checkpoint_path = fallback_path
-        
-        if checkpoint_path:
-            winners.append({
-                'name': name,
-                'path': str(checkpoint_path),
-                'win_rate': stats['win_rate'],
-                'wins': stats['wins'],
-                'losses': stats['losses'],
-                'avg_chips': stats['avg_chips'],
-                'generations': max(stats['generations']) if stats['generations'] else None
-            })
     
+    for champion_path in champion_files[:top_n] if top_n else champion_files:
+        # Extract name from filename (e.g., p12_m8_h500_s0.08_g200_champion.npy)
+        name = champion_path.stem.replace('_champion', '').replace('_v2', '')
+        
+        winners.append({
+            'name': name,
+            'path': str(champion_path),
+            'win_rate': None,  # Not needed for loading
+            'wins': None,
+            'losses': None,
+            'avg_chips': None,
+            'generations': None
+        })
+        print(f"  ✓ {name}")
+    
+    print(f"\nLoaded {len(winners)} champions as HoF opponents\n")
     return winners
 
 
@@ -401,10 +334,9 @@ def main():
             print("   Make sure tournament reports exist in tournament_reports/")
             sys.exit(1)
         
-        print(f"\n  Top {len(winners)} tournament winners:")
+        print(f"\n  Top {len(winners)} champions loaded:")
         for i, w in enumerate(winners, 1):
-            gens_info = f", {w['generations']}g" if w['generations'] else ""
-            print(f"    {i}. {w['name']:<30s} Win rate: {w['win_rate']*100:.1f}% ({w['wins']}W-{w['losses']}L{gens_info})")
+            print(f"    {i}. {w['name']:<40s}")
             print(f"       Path: {w['path']}")
         print()
         
@@ -451,6 +383,17 @@ def main():
     out_dir = Path(args.output) / f"sweep_hof_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     out_dir.mkdir(parents=True, exist_ok=True)
     
+    # Prepare sweep input metadata
+    sweep_input = {
+        'pop': args.pop,
+        'matchups': args.matchups,
+        'hands': args.hands,
+        'sigmas': args.sigma,
+        'generations': args.gens,
+        'hof_count': len(hof_weights),
+        'timestamp': datetime.now().isoformat()
+    }
+    
     # Run sweep
     results = []
     for i, (name, params) in enumerate(configs, 1):
@@ -458,9 +401,13 @@ def main():
         result = run_training_with_hof(name, params, hof_weights, args.seed + i, out_dir)
         if result:
             results.append(result)
-            # Save incrementally
+            # Save incrementally with sweep_input metadata
+            output_data = {
+                'sweep_input': sweep_input,
+                'results': results
+            }
             with open(out_dir / 'results.json', 'w') as f:
-                json.dump(results, f, indent=2)
+                json.dump(output_data, f, indent=2)
     
     if not results:
         print("\n❌ No results collected")
