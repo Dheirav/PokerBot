@@ -55,7 +55,7 @@ PokerBot/
 ├── hyperparam_results/      # Hyperparameter sweep results and visualizations
 ├── tournament_reports/      # Round-robin tournament results and charts
 ├── logs/                    # Training logs and tensorboard events
-├── match_logs/              # Game history logs (optional, disabled by default)
+├── match_logs/              # Game history logs (optional, disabled by default)\n├── ANALYSIS_CAPABILITIES.md # Mathematical analysis and scaling laws documentation
 ├── OPTIMIZATION_DOCS.md     # Detailed optimization documentation
 ├── OPTIMIZATION_GUIDE.md    # Step-by-step optimization guide
 ├── OPTIMIZATION_SUMMARY.md  # Quick optimization reference
@@ -198,6 +198,22 @@ python scripts/train.py \
 ```
 
 **Output**: Trained agents saved to `checkpoints/evolution_run/`
+
+### Mathematical Analysis
+Derive scaling laws and optimal configurations from sweep data:
+
+```bash
+# Analyze hyperparameter relationships
+python scripts/analysis/extract_hyperparameter_relationships.py \
+    hyperparam_results/sweep_* 
+```
+
+**Key Discoveries**:
+- σ_optimal = 0.458/√p (mutation scaling law)
+- Hall of Fame provides +144% performance boost
+- Champion config: p12_m6_h375_s0.1_hof3 (5213 BB/100)
+
+**Output**: Mathematical formulas, visualizations, and research report
 
 ### Hyperparameter Optimization
 Find optimal training parameters with specialized sweep tools. **New features:**

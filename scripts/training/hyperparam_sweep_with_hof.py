@@ -185,7 +185,7 @@ def run_training_with_hof(name, params, hof_weights, seed, out_dir):
         fitness=FitnessConfig(
             hands_per_matchup=params['hands_per_matchup'],
             matchups_per_agent=params['matchups_per_agent'],
-            num_players=2
+            num_players=6  # 6-max poker (default)
         ),
         num_generations=params['generations'],
         seed=seed,

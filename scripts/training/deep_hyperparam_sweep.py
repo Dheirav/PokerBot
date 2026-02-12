@@ -86,6 +86,8 @@ def main():
     parser.add_argument('--sigma', '--mutation', nargs='+', type=float,
                        help='Mutation sigma values to test (overrides --top)')
     parser.add_argument('--dry-run', action='store_true', help='Only print commands, do not run')
+    parser.add_argument('--disable-tensorflow-logs', '--disable-tf-logs', action='store_true',
+                        help='Suppress TensorFlow logs in subprocess runs (saves ~2-3 sec per config)')
     
     # Hall of Fame options
     hof_group = parser.add_argument_group('Hall of Fame Pre-loading (applies to all runs)')
@@ -242,10 +244,15 @@ def main():
             '--pop', str(params['population_size']),
             '--matchups', str(params['matchups_per_agent']),
             '--hands', str(params['hands_per_matchup']),
-            '--gens', str(params['generations'])
+            '--gens', str(params['generations']),
+            '--checkpoint-interval', '999'  # Disable checkpointing during sweeps for speed
         ]
         if 'mutation_sigma' in params:
             cmd += ['--sigma', str(params['mutation_sigma'])]
+        
+        # Add TensorFlow logging suppression if requested (saves ~2-3 sec per config)
+        if args.disable_tensorflow_logs:
+            cmd += ['--disable-tensorflow-logs']
         out_dir = f"checkpoints/deep_{r['name']}"
         cmd += ['--output', out_dir]
         

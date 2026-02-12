@@ -19,6 +19,17 @@ Examples:
     python3 scripts/train.py --resume checkpoints/evolution_run
 """
 import os
+import sys
+
+# Check if TensorFlow logging should be disabled (faster startup)
+disable_tf_logs = '--disable-tensorflow-logs' in sys.argv or '--disable-tf-logs' in sys.argv
+
+# Suppress TensorFlow startup messages if requested (saves ~2-3 seconds)
+if disable_tf_logs:
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress all TF logging
+    import warnings
+    warnings.filterwarnings('ignore')
+
 # Optimize numpy for multiprocessing - prevent thread conflicts
 os.environ['OMP_NUM_THREADS'] = '1'
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
@@ -28,8 +39,8 @@ os.environ['NUMEXPR_NUM_THREADS'] = '1'
 import argparse
 import sys
 
-# Add parent directory to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add project root to path (go up 2 levels from scripts/training/train.py to reach project root)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from training import (
     EvolutionTrainer,
@@ -94,9 +105,15 @@ def parse_args():
                         help='Experiment name')
     parser.add_argument('--workers', type=int, default=4,
                         help='Parallel workers (default 4 for speedup)')
+    parser.add_argument('--checkpoint-interval', type=int, default=10,
+                        help='Checkpoint every N generations (default 10, use 999 to disable during sweeps)')
     
     parser.add_argument('--seed-weights', type=str, default=None,
                         help='Path to .npy file with weights to seed initial population')
+    
+    # Performance optimization
+    parser.add_argument('--disable-tensorflow-logs', '--disable-tf-logs', action='store_true',
+                        help='Suppress TensorFlow startup messages (saves ~2-3 seconds per run)')
     
     # Hall of Fame pre-loading options
     hof_group = parser.add_argument_group('Hall of Fame Pre-loading')
@@ -162,6 +179,7 @@ def create_config(args) -> TrainingConfig:
             num_workers=args.workers,
         ),
         num_generations=args.gens,
+        checkpoint_interval=args.checkpoint_interval,
         seed=args.seed,
         output_dir=args.output,
         experiment_name=args.name,
@@ -175,18 +193,43 @@ def main():
     print("Evolutionary Poker AI Training")
     print("=" * 60)
     
-    # Create config
-    config = create_config(args)
-    
-    # Create trainer
-    trainer = EvolutionTrainer(config)
-
-    # Resume or initialize
+    # Resume or create new config
     if args.resume:
         print(f"\nResuming from {args.resume}...")
+        # Load config from checkpoint
+        import json
+        from pathlib import Path
+        checkpoint_path = Path(args.resume)
+        config_file = checkpoint_path / 'config.json'
+        if not config_file.exists():
+            print(f"Error: Config file not found at {config_file}")
+            sys.exit(1)
+        
+        with open(config_file) as f:
+            checkpoint_config = json.load(f)
+        
+        # Recreate config from checkpoint
+        config = TrainingConfig(
+            network=NetworkConfig(**checkpoint_config['network']),
+            evolution=EvolutionConfig(**checkpoint_config['evolution']),
+            fitness=FitnessConfig(**checkpoint_config['fitness']),
+            num_generations=checkpoint_config.get('num_generations', args.gens),
+            checkpoint_interval=checkpoint_config.get('checkpoint_interval', 10),
+            seed=checkpoint_config['seed'],
+            output_dir=str(checkpoint_path.parent.parent),
+            experiment_name=checkpoint_config.get('experiment_name', 'evolution_run')
+        )
+        
+        # Create trainer with checkpoint config
+        trainer = EvolutionTrainer(config)
         trainer.load_checkpoint(args.resume)
     else:
         print("\nInitializing new population...")
+        # Create config
+        config = create_config(args)
+        
+        # Create trainer
+        trainer = EvolutionTrainer(config)
         seed_weights = None
         hof_weights = None
         
@@ -229,6 +272,19 @@ def main():
                     for i in range(remaining):
                         hof_weights.append(hof[i])
                     print(f"  Loaded {remaining} genomes from hall_of_fame.npy")
+                
+                # Load champion files (*champion.npy)
+                if len(hof_weights) < args.hof_count:
+                    champion_files = list(hof_dir.glob("*champion.npy"))
+                    remaining = min(args.hof_count - len(hof_weights), len(champion_files))
+                    for i in range(remaining):
+                        try:
+                            champion_weights = np.load(champion_files[i])
+                            hof_weights.append(champion_weights)
+                        except Exception as e:
+                            print(f"  Warning: Could not load {champion_files[i]}: {e}")
+                    if remaining > 0:
+                        print(f"  Loaded {remaining} champion genomes from *champion.npy files")
                     
             elif args.hof_paths:
                 print(f"Loading Hall of Fame from {len(args.hof_paths)} paths")

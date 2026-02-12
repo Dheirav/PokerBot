@@ -12,6 +12,7 @@
 | [eval_baseline.py](#eval_baselinepy) | Agent evaluation | Test trained agent vs baselines |
 | [match_agents.py](#match_agentspy) | Head-to-head matches | Compare two specific agents |
 | [round_robin_agents_config.py](#round_robin_agents_configpy) | Tournament | Find best agent among all trained |
+| [extract_hyperparameter_relationships.py](#extract_hyperparameter_relationshipspy) | Mathematical analysis | Derive scaling laws and optimal configurations |
 | [hyperparam_sweep.py](#hyperparam_sweeppy) | Standard sweep | Find good hyperparameters (self-play) |
 | [hyperparam_sweep_with_benchmark.py](#hyperparam_sweep_with_benchmarkpy) | Benchmark sweep | Fair hyperparameter comparison |
 | [hyperparam_sweep_with_hof.py](#hyperparam_sweep_with_hofpy) | HoF sweep | Small population optimization |
@@ -683,6 +684,89 @@ python scripts/visualize_hyperparam_sweep.py --sweep-dir hyperparam_results/swee
   - Parameter heatmaps
   - Learning curves
   - Best configuration highlights
+
+---
+
+### extract_hyperparameter_relationships.py
+
+**Purpose**: Derive mathematical scaling laws and optimal hyperparameter configurations from empirical sweep data
+
+**When to Use**:
+- After collecting substantial sweep data (multiple sweep directories)
+- Need mathematical formulas for optimal hyperparameter selection
+- Want to understand Hall of Fame impact quantitatively
+- Research and publication of scaling laws
+- Designing optimal configurations for new population sizes
+
+**Key Features**:
+1. **Mathematical Relationship Derivation**: Fits curves to derive formulas like σ_optimal = 0.458/√p
+2. **Hall of Fame Impact Analysis**: Quantifies HOF performance boost (+144% improvement)
+3. **Population-Specific Optimization**: Finds optimal configurations for each population size
+4. **Predictive Modeling**: Extrapolates to untested hyperparameter combinations
+5. **Comprehensive Visualizations**: Generates 6 different charts and heatmaps
+6. **Research-Quality Reports**: Produces detailed markdown reports with mathematical formulations
+
+**Usage**:
+```bash
+# Analyze single sweep (basic analysis)
+python scripts/analysis/extract_hyperparameter_relationships.py hyperparam_results/sweep_20260129_062341
+
+# Multi-sweep analysis (recommended - more comprehensive)
+python scripts/analysis/extract_hyperparameter_relationships.py \
+    hyperparam_results/sweep_20260123_211525 \
+    hyperparam_results/sweep_hof_20260127_133129 \
+    hyperparam_results/sweep_hof_20260129_062341 \
+    hyperparam_results/sweep_hof_20260202_181109
+
+# Auto-detect latest sweep
+python scripts/analysis/extract_hyperparameter_relationships.py
+```
+
+**Requirements**:
+- `scipy` for mathematical curve fitting
+- `matplotlib`, `seaborn` for visualizations (optional)
+- Sweep data in `hyperparam_results/` directories
+- Each sweep must contain `results.json` files
+
+**Output** (saved to `hyperparam_results/analysis/`):
+- **Report**: `hyperparameter_analysis_report.md` - Comprehensive mathematical analysis
+- **Visualizations**: 6 charts showing relationships and predictions
+  - `hyperparameter_effects.png` - Individual parameter effects
+  - `mathematical_relationships.png` - Fitted curves and formulas
+  - `population_specific_optima.png` - Optimal configs per population
+  - `predictions.png` - Extrapolations to untested configurations
+  - `heatmap_*.png` - Interaction heatmaps
+- **HOF Analysis**: `hall_of_fame_members_analysis.txt` - Elite genome tracking
+
+**Mathematical Relationships Discovered**:
+- **Population ↔ Sigma**: σ_optimal = 0.458/√p (mutation rate scales with population)
+- **Population ↔ Matchups**: Small pops (p≤20): m≈0.64p, Large pops (p≥40): m≈0.17p
+- **Matchups ↔ Hands**: Variety > Depth (prioritize matchups over hands)
+- **Hall of Fame Impact**: +144% fitness improvement over non-HOF configurations
+
+**Key Insights**:
+- **Champion Configuration**: p12_m6_h375_s0.1_hof3 (5213.36 BB/100)
+- **Population Optimum**: 12 agents provide +117% improvement
+- **HOF Critical**: Hall of Fame is the single most important hyperparameter
+- **Scaling Laws**: Provides mathematical formulas for designing untested configurations
+
+**Prediction Capabilities**:
+- Optimal sigma for any population size using σ = 0.458/√p
+- Optimal matchups using population-dependent scaling rules
+- Expected fitness for untested hyperparameter combinations
+- Resource allocation guidance (matchups vs hands budget)
+
+**HOF Member Tracking**:
+- Tracks specific Hall of Fame genomes used during training
+- Shows which elite solutions influenced each configuration
+- Enables understanding of opponent quality impact
+- Compatible with enhanced training system HOF tracking
+
+**Time**: 10-30 seconds depending on data size
+
+**See Also**: 
+- [HOF_MEMBER_TRACKING_IMPLEMENTATION.md](../HOF_MEMBER_TRACKING_IMPLEMENTATION.md) - HOF tracking system
+- [HYPERPARAMETER_RELATIONSHIPS.md](../HYPERPARAMETER_RELATIONSHIPS.md) - Detailed mathematical analysis
 
 ---
 

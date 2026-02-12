@@ -483,19 +483,64 @@ def evaluate_matchup(genome_weights: np.ndarray,
     return total_delta, hands_played
 
 
+def _worker_evaluate_genome_with_hof(args: Tuple) -> Dict:
+    """
+    Worker function for parallel evaluation with HOF tracking.
+    
+    Args:
+        args: Tuple of (genome_id, genome_weights, opponent_weights_list, 
+                       network_config, fitness_config, base_seed, hof_info)
+                       
+    Returns:
+        Dict with evaluation results including HOF usage
+    """
+    if len(args) == 7:
+        # New format with HOF tracking
+        genome_id, genome_weights, opponent_weights_list, network_config, fitness_config, base_seed, hof_info = args
+    else:
+        # Old format for backward compatibility  
+        genome_id, genome_weights, opponent_weights_list, network_config, fitness_config, base_seed = args
+        hof_info = {}
+    
+    # Call the original worker function
+    original_args = (genome_id, genome_weights, opponent_weights_list, network_config, fitness_config, base_seed, hof_info)
+    result = _worker_evaluate_genome(original_args)
+    
+    # Convert EvalResult to dict and add HOF tracking
+    result_dict = {
+        'genome_id': genome_id,
+        'fitness': result.fitness,
+        'num_hands': result.num_hands,
+        'win_rate': result.win_rate,
+        'num_matchups': result.num_matchups
+    }
+    
+    # Add HOF tracking information
+    if hof_info and 'hof_ids_used' in hof_info:
+        result_dict['hof_ids_used'] = hof_info['hof_ids_used']
+        result_dict['hof_count_per_matchup'] = hof_info['hof_count_per_matchup']
+        result_dict['total_hof_opponents'] = len(hof_info['hof_ids_used'])
+    else:
+        result_dict['hof_ids_used'] = []
+        result_dict['hof_count_per_matchup'] = []
+        result_dict['total_hof_opponents'] = 0
+    
+    return result_dict
+
+
 def _worker_evaluate_genome(args: Tuple) -> EvalResult:
     """
     Worker function for parallel evaluation.
     
     Args:
         args: Tuple of (genome_id, genome_weights, opponent_weights_list, 
-                       network_config, fitness_config, base_seed)
+                       network_config, fitness_config, base_seed, hof_info)
                        
     Returns:
         EvalResult for this genome
     """
     (genome_id, genome_weights, opponent_weights_list,
-     network_config, fitness_config, base_seed) = args
+     network_config, fitness_config, base_seed, hof_info) = args
     
     total_delta = 0
     total_hands = 0
@@ -578,7 +623,7 @@ class FitnessEvaluator:
     
     def create_opponent_groups(self, genomes: List[Genome],
                                hall_of_fame: Optional[List[Genome]] = None,
-                               hof_max_size: int = 20) -> List[List[np.ndarray]]:
+                               hof_max_size: int = 20) -> Tuple[List[List[np.ndarray]], List[List[int]]]:
         """
         Create opponent weight groups for evaluation.
         
@@ -589,7 +634,7 @@ class FitnessEvaluator:
             hall_of_fame: Optional historical best agents
             
         Returns:
-            List of opponent weight lists
+            Tuple of (opponent weight lists, HOF ID tracking lists)
         """
         num_opponents = self.config.num_players - 1
         num_matchups = self.config.matchups_per_agent
@@ -598,6 +643,7 @@ class FitnessEvaluator:
         all_weights = [g.weights for g in genomes]
         
         hof_weights = []
+        hof_genome_ids = []
         if hall_of_fame:
             # Keep only the most diverse and highest-performing agents in the Hall of Fame
             hof_sorted = sorted(hall_of_fame, key=lambda g: g.fitness if g.fitness is not None else -1, reverse=True)
@@ -613,11 +659,14 @@ class FitnessEvaluator:
                 if len(hof_selected) >= hof_max_size:
                     break
             hof_weights = [g.weights for g in hof_selected]
+            hof_genome_ids = [g.genome_id for g in hof_selected]
         
         groups = []
+        hof_tracking = []  # Track which HOF members are used in each group
         
         for _ in range(num_matchups):
             group = []
+            group_hof_ids = []  # HOF IDs used in this group
             
             for _ in range(num_opponents):
                 # Decide source: population, HoF, or random
@@ -627,20 +676,24 @@ class FitnessEvaluator:
                     # 20% from HoF
                     idx = self.rng.integers(len(hof_weights))
                     group.append(hof_weights[idx])
+                    group_hof_ids.append(hof_genome_ids[idx])
                 elif r < 0.3:
                     # 10% random
                     random_weights = self.rng.standard_normal(
                         self.factory.genome_size
                     ).astype(np.float32) * 0.1
                     group.append(random_weights)
+                    # No HOF ID for random opponents
                 else:
                     # 70% from population
                     idx = self.rng.integers(len(all_weights))
                     group.append(all_weights[idx])
+                    # No HOF ID for population opponents
             
             groups.append(group)
+            hof_tracking.append(group_hof_ids)
         
-        return groups
+        return groups, hof_tracking
     
     def evaluate_single(self, genome: Genome,
                        opponents: List[Genome],
@@ -660,7 +713,7 @@ class FitnessEvaluator:
             old_hands = self.config.hands_per_matchup
             self.config.hands_per_matchup = num_hands // self.config.matchups_per_agent
         
-        opponent_groups = self.create_opponent_groups(opponents)
+        opponent_groups, _ = self.create_opponent_groups(opponents)
         
         total_delta = 0
         total_hands = 0
@@ -683,7 +736,8 @@ class FitnessEvaluator:
     
     def evaluate_population(self, genomes: List[Genome],
                            hall_of_fame: Optional[List[Genome]] = None,
-                           parallel: bool = False) -> Dict[int, EvalResult]:
+                           parallel: bool = False,
+                           track_hof_usage: bool = True) -> Dict[int, EvalResult]:
         """
         Evaluate fitness for all genomes in population.
         
@@ -691,20 +745,37 @@ class FitnessEvaluator:
             genomes: List of genomes to evaluate
             hall_of_fame: Optional HoF for opponent diversity
             parallel: Use multiprocessing
+            track_hof_usage: Whether to track which HOF members were used as opponents
             
         Returns:
             Dict mapping genome_id to EvalResult
         """
-        # Create opponent groups
-        opponent_groups = self.create_opponent_groups(genomes, hall_of_fame)
+        # Create opponent groups with optional HOF tracking
+        if track_hof_usage:
+            opponent_groups, hof_tracking = self.create_opponent_groups(genomes, hall_of_fame)
+        else:
+            # Fallback for backward compatibility
+            result = self.create_opponent_groups(genomes, hall_of_fame)
+            if isinstance(result, tuple):
+                opponent_groups, hof_tracking = result
+            else:
+                opponent_groups = result
+                hof_tracking = [[] for _ in opponent_groups]
         
         # Prepare evaluation arguments
         base_seed = self.rng.integers(0, 2**31)
-        args_list = [
-            (g.genome_id, g.weights, opponent_groups,
-             self.factory.network_config, self.config, base_seed)
-            for g in genomes
-        ]
+        args_list = []
+        for i, g in enumerate(genomes):
+            # Include HOF tracking info for each genome
+            hof_info = {
+                'hof_ids_used': [hof_id for group_hof in hof_tracking for hof_id in group_hof],
+                'hof_count_per_matchup': [len(group_hof) for group_hof in hof_tracking]
+            } if track_hof_usage else {}
+            
+            args_list.append((
+                g.genome_id, g.weights, opponent_groups,
+                self.factory.network_config, self.config, base_seed, hof_info
+            ))
         
         if parallel and self.config.num_workers > 1:
             # Parallel evaluation

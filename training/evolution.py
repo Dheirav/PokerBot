@@ -142,7 +142,7 @@ class EvolutionTrainer:
         results = {}
         for genome in self.population.genomes:
             # Use the same opponent selection as in training
-            opponent_groups = self.evaluator.create_opponent_groups(self.population.genomes, self.population.hall_of_fame)
+            opponent_groups, _ = self.evaluator.create_opponent_groups(self.population.genomes, self.population.hall_of_fame)
             total_delta = 0
             total_hands = 0
             for matchup_idx, opponent_weights in enumerate(opponent_groups):
@@ -267,6 +267,8 @@ class EvolutionTrainer:
         self.population.initialize(seed_genome=seed_genome)
         
         # Pre-populate Hall of Fame with provided models
+        # NOTE: HOF tracking is ONLY done at initialization to see who was pre-seeded.
+        # Per-generation HOF updates have been disabled for this training run.
         if hof_weights is not None and len(hof_weights) > 0:
             print(f"Pre-populating Hall of Fame with {len(hof_weights)} models...")
             for i, weights in enumerate(hof_weights):
@@ -279,6 +281,8 @@ class EvolutionTrainer:
                 except Exception as e:
                     print(f"  Warning: Could not load HoF model {i+1}: {e}")
             print(f"Hall of Fame initialized with {len(self.population.hall_of_fame)} models")
+        else:
+            print(f"Hall of Fame: No pre-seeded models loaded")
         
         print(f"Initialized population with {len(self.population)} genomes")
         print(f"Genome size: {self.factory.genome_size} parameters")
@@ -315,8 +319,8 @@ class EvolutionTrainer:
             self.best_fitness = current_best.fitness
             self.best_genome = current_best.copy()
         
-        # 3. Update hall of fame
-        self.population.update_hall_of_fame()
+        # 3. Hall of Fame tracking disabled - only track at initialization
+        # (to see pre-seeded HOF members, not updated per generation)
         
         # 4. Evolve to next generation
         new_genomes, evo_info = self.population.evolve()

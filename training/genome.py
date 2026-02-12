@@ -97,12 +97,14 @@ class Genome:
         fitness: Evaluated fitness score (None if not yet evaluated)
         generation: Generation this genome was created
         parent_id: ID of parent genome (None if initial)
+        hof_opponents_used: List of HOF genome IDs used as opponents (optional tracking)
     """
     genome_id: int
     weights: np.ndarray
     fitness: Optional[float] = None
     generation: int = 0
     parent_id: Optional[int] = None
+    hof_opponents_used: Optional[List[int]] = field(default_factory=list)
     
     def copy(self) -> 'Genome':
         """Create a deep copy of this genome."""
@@ -112,6 +114,7 @@ class Genome:
             fitness=self.fitness,
             generation=self.generation,
             parent_id=self.parent_id,
+            hof_opponents_used=self.hof_opponents_used.copy() if self.hof_opponents_used else []
         )
     
     def __repr__(self) -> str:
@@ -379,6 +382,9 @@ class Population:
         Update hall of fame with best current genomes.
         
         Keeps the top genomes seen across all generations.
+        
+        NOTE: This method is currently DISABLED and not called during training.
+        HOF tracking is now only done at initialization to observe pre-seeded members.
         """
         # Add top genomes from current population
         self.sort_by_fitness()

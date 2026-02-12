@@ -91,6 +91,8 @@ fitness_config = FitnessConfig(
 
 A genome is a flat numpy array representing all neural network weights.
 
+**New Feature**: Enhanced genome tracking with `hof_opponents_used` field for Hall of Fame analysis.
+
 ```python
 from training import Genome, GenomeFactory
 
@@ -530,6 +532,65 @@ def custom_fitness(genome, opponents):
 # Use in evolution
 evolution.fitness_function = custom_fitness
 ```
+
+---
+
+## 🏆 Hall of Fame Member Tracking
+
+**New Feature**: The training system now tracks which specific Hall of Fame members are used as opponents during fitness evaluation. This enables detailed analysis of elite genome influence and opponent quality impact.
+
+### Implementation Details
+
+**Enhanced Genome Representation**:
+```python
+# Genomes now optionally track HOF opponent usage
+genome.hof_opponents_used = [hof_member_1, hof_member_2, ...]  # List of HOF genome IDs
+```
+
+**Fitness Evaluation with Tracking**:
+```python
+# fitness.py automatically tracks HOF usage
+def create_opponent_groups(population, hof_opponents=None, track_hof_usage=True):
+    # Creates opponent groups and tracks which HOF members are used
+    # Returns: (opponent_groups, hof_usage_tracking)
+    
+def evaluate_population(population, fitness_config, hof_opponents=None, track_hof_usage=True):
+    # Evaluates population and updates genome.hof_opponents_used fields
+    # Backward compatible - tracking is optional
+```
+
+**Integration with Analysis**:
+- HOF tracking integrates seamlessly with `extract_hyperparameter_relationships.py`
+- Enables quantitative analysis of which elite solutions influence training
+- Maintains backward compatibility with existing code
+- Zero performance overhead when tracking is disabled
+
+**Key Benefits**:
+1. **Opponent Quality Analysis**: Understand which HOF members contribute most to training
+2. **Performance Correlation**: Link specific elite genomes to fitness improvements
+3. **Research Insights**: Enable detailed studies of opponent selection impact
+4. **Configuration Optimization**: Identify optimal HOF member combinations
+
+**Usage in Training**:
+```python
+# Enable HOF tracking in evolution (automatic)
+from training import Evolution
+
+# Tracking happens automatically if HOF opponents provided
+evolution = Evolution(network_config, evolution_config, fitness_config)
+evolution.initialize_with_hof(hof_weights)  # Tracking enabled automatically
+```
+
+**Analysis Integration**:
+```bash
+# HOF tracking analysis (part of extract_hyperparameter_relationships.py)
+python scripts/analysis/extract_hyperparameter_relationships.py
+# Output includes HOF member usage statistics and impact analysis
+```
+
+**See Also**:
+- [HOF_MEMBER_TRACKING_IMPLEMENTATION.md](../HOF_MEMBER_TRACKING_IMPLEMENTATION.md) - Complete implementation details
+- [extract_hyperparameter_relationships.py](../scripts/analysis/extract_hyperparameter_relationships.py) - Analysis with HOF tracking
 
 ---
 
