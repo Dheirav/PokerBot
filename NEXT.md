@@ -138,7 +138,16 @@ August checkpoints. The pre-fix numbers survive as records; the agents behind th
 2. ~~Re-run Phase 4 once evolution is refitted.~~ The precondition cannot be met — item 1 closed
    evolution as never-to-be-refitted. Phase 4 was re-run without it, on the corrected sizing and
    the six-seed PPO data; evolution's row carries † and stays on the old convention.
-3. **Re-run Slumbot** (~7h). The CFR agent's raises changed, so −987 ± 374 is stale.
+3. ~~Re-run Slumbot because the raise fix changed the agent.~~ **Wrong reason; not done.** The
+   Slumbot pipeline never imports `training/fitness.py` — `slumbot/bridge.py` sizes its own raises
+   off the pot after the call, which is the convention the fix moved the engine *to*. The fix
+   changed nothing about how the agent plays Slumbot, and **−987 ± 374 stands**.
+
+   Re-running with the 250k solver would also measure nothing. It beats the 150k one by
+   +12.3 ± 7 BB/100 internally, internal gains overstate external ones by ~2.4×, so expect about
+   +51 mbb/hand against an interval of ±374 — seven hours to look for an effect seven times
+   smaller than the error bar. A Slumbot re-run needs either far more hands (~45,000 for M2's
+   ±200) or a genuinely different agent, which means the 200bb retrain.
 4. ~~Widen the seed count.~~ **Done** — six seeds, `results/ppo/phase3_endpoint_6seed.json`.
 
 ---
