@@ -4,7 +4,7 @@ One page, kept current. [`BACKLOG.md`](BACKLOG.md) holds the reasoning and every
 [`docs/training-plan.md`](docs/training-plan.md) holds the full phase plan and its results. This
 file is only the next thing to do.
 
-**Last updated:** 2 September 2026 · `main` at `23d9a47` · 233 tests + 44 Slumbot tests
+**Last updated:** 6 September 2026 · `main` at `af1120b` · 285 tests (collection alone ~6 min)
 
 ---
 
@@ -17,15 +17,15 @@ file is only the next thing to do.
 | PPO | measured | Closes the gap to the CFR agent: −383.8 → −10.7 BB/100 after 8M hands. Flat after 2M |
 
 All three are measured, and **Phase 4 — the comparison the project's title promises — is done**
-(`results/comparison/phase4.json`). One panel, 40,000 hands, one wall-clock axis, in BB/100:
+(`results/comparison/phase4_6seed.json`). One panel, 40,000 hands, a hands axis, in BB/100:
 
 | family | hands | vs random | vs always-call | vs CFR |
 |---|---|---|---|---|
 | CFR (the solver) | — | +383.6 | +719.6 | — |
-| evolution, 50 generations † | 36,000,000 | +192.7 | +0.5 | −370.1 |
-| PPO | 500,000 | +228.9 | +452.1 | **+60.2** |
-| PPO | 2,000,000 | +156.5 | +380.9 | −1.7 |
-| PPO | 8,000,000 | +262.4 | +494.7 | **+59.1** |
+| evolution, 50 generations † | 36,000,000 | +192.7 | +0.5 | **−370.1** |
+| PPO | 500,000 | +191.2 | +372.6 | +20.1 |
+| PPO | 2,000,000 | +137.2 | +373.2 | +12.5 |
+| PPO | 8,000,000 | +226.8 | +329.1 | **+36.4** |
 
 † pre-fix raise convention; evolution was not retrained because its fitness cannot be selected on.
 
@@ -135,13 +135,11 @@ August checkpoints. The pre-fix numbers survive as records; the agents behind th
    same cards does not help (spearman +0.01). The genomes are near-indistinguishable, so selection
    sorts noise and three hours would buy nothing. Phase 4's evolution row stays on the old raise
    convention and is marked as such.
-2. **Re-run Phase 4** (~10 min) once evolution is refitted. Every figure in that table was
-   measured under the old sizing.
+2. ~~Re-run Phase 4 once evolution is refitted.~~ The precondition cannot be met — item 1 closed
+   evolution as never-to-be-refitted. Phase 4 was re-run without it, on the corrected sizing and
+   the six-seed PPO data; evolution's row carries † and stays on the old convention.
 3. **Re-run Slumbot** (~7h). The CFR agent's raises changed, so −987 ± 374 is stale.
 4. ~~Widen the seed count.~~ **Done** — six seeds, `results/ppo/phase3_endpoint_6seed.json`.
-
-Fix `scripts/train_ppo.py` to take an output directory before any of the above, so the next
-retrain does not destroy what it is being compared against.
 
 ---
 

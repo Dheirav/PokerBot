@@ -321,9 +321,9 @@ arithmetic over files that already existed.
 |---|---|---|---|---|
 | CFR (the solver) | — | **+383.6** | **+719.6** | — |
 | evolution, 50 generations † | 36,000,000 | +192.7 | +0.5 | −370.1 |
-| PPO | 500,000 | +228.9 | +452.1 | **+60.2** |
-| PPO | 2,000,000 | +156.5 | +380.9 | −1.7 |
-| PPO | 8,000,000 | +262.4 | +494.7 | **+59.1** |
+| PPO | 500,000 | +191.2 | +372.6 | +20.1 |
+| PPO | 2,000,000 | +137.2 | +373.2 | +12.5 |
+| PPO | 8,000,000 | +226.8 | +329.1 | **+36.4** |
 
 † Measured under the pre-3-September raise sizing, where a pot-fraction raise was about 20%
 smaller. Evolution was not retrained because its fitness cannot be selected on — see above — so
@@ -382,10 +382,16 @@ exact, machine-independent, and what both learned families actually spend. The s
 axis entirely: it traverses a tree rather than playing hands, and here it is the opponent rather
 than a competitor.
 
-**Under the corrected raise sizing PPO is at or above parity across the whole ladder** — +60.2,
-−1.7 and +59.1 against the solver, where before the fix it read −59.5, +10.4 and −10.7. The
-finding is stronger than the one it replaces, though the seed spreads behind it are five to six
-times wider and unexplained.
+**PPO's rows here are the six-seed means**, and only the 8,000,000 rung is separated from parity
+(+36.4 ± 13, t = 2.74). The 500,000 and 2,000,000 rungs are not: +20.1 and +12.5 against standard
+errors of 29.2 and 24.6. The table is quoted rather than ranked for that reason — the three PPO
+rows cannot be ordered against each other on this evidence, only the largest can be told from the
+solver.
+
+An earlier version of this table carried the three-seed figures, +60.2 / −1.7 / +59.1, which put
+the advantage at the smallest rung and a dip in the middle. Six seeds reverse that shape. The
+numbers above supersede them; `results/comparison/phase4.json` and `phase4_refit.json` are the
+earlier runs and should not be quoted.
 
 **The table is non-transitive, and that is the most interesting thing in it.** PPO at 2M draws
 level with the CFR agent head to head, yet the solver takes far more off both baselines —
